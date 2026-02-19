@@ -438,10 +438,8 @@ class KinoAdminState(StatesGroup):
 def menu_kb(is_admin: bool = False):
     rows = [
         [KeyboardButton(text="🧑‍💼 Admin bilan bog'lanish")],
-        [KeyboardButton(text="📝 Slayd buyurtma")],
-        [KeyboardButton(text="🎥 AI Video")],
-        [KeyboardButton(text="🎬 Kino kodlari")],
-        [KeyboardButton(text="📚 Bilim Ulash")],
+        [KeyboardButton(text="📝 Slayd buyurtma"), KeyboardButton(text="🎥 AI Video")],
+        [KeyboardButton(text="🎬 Kino kodlari"), KeyboardButton(text="📚 Foydali kodlar")],
         [KeyboardButton(text="🤖 Bot yaratib berish")],
     ]
     if is_admin:
@@ -646,9 +644,9 @@ async def reg_phone(msg: Message, state: FSMContext):
 
 # ===================== XIZMATLAR (faqat ro'yxatdan o'tganlar) =====================
 # ====================================================
-# ===================== BILIM ULASH ==================
+# ===================== FOYDALI KODLAR ==================
 # ====================================================
-@dp.message(F.text.contains("Bilim Ulash"))
+@dp.message(F.text.contains("Foydali kodlar") | F.text.contains("Bilim Ulash"))
 async def bilim_ulash_start(msg: Message, state: FSMContext):
     if not is_registered(msg.from_user.id):
         await msg.answer("🔒 Avval ro'yxatdan o'ting. /start bosing.", reply_markup=sub_kb())
