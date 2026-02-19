@@ -1,3 +1,4 @@
 .env
 users.json
-users_export.rtf
+users_export.rtf__pycache__/
+*.pyc
