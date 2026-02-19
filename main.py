@@ -933,7 +933,7 @@ async def back_to_main_menu(call: CallbackQuery, state: FSMContext):
 async def admin_contact(msg: Message, state: FSMContext):
     await delete_last_user_message(state)
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=" Adminga yozish", url=f"tg://user?id={INFO_ADMIN_ID}")]
+        [InlineKeyboardButton(text=" Adminga yozish", url=f"tg://user?id={ADMIN_ID}")]
     ])
     await msg.answer(
         " Taklif yoki muammo bo'lsa, adminga murojaat qiling.",
@@ -945,7 +945,7 @@ async def admin_contact(msg: Message, state: FSMContext):
 async def bot_create_contact(msg: Message, state: FSMContext):
     await delete_last_user_message(state)
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=" Adminga yozish", url=f"tg://user?id={INFO_ADMIN_ID}")]
+        [InlineKeyboardButton(text=" Adminga yozish", url=f"tg://user?id={ADMIN_ID}")]
     ])
     await msg.answer(
         " Bot yaratish bo'yicha adminga yozing.",
