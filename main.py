@@ -386,6 +386,9 @@ class AdminSendState(StatesGroup):
     user_number = State()
     comment = State()
 
+class AdminBroadcastState(StatesGroup):
+    message = State()
+
 class BilimUlashUserState(StatesGroup):
     user_number = State()
 
@@ -431,6 +434,7 @@ def admin_panel_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📊 Statistika", callback_data="admin_stats")],
         [InlineKeyboardButton(text="🧾 User info", callback_data="admin_users_export")],
+        [InlineKeyboardButton(text="📣 Hammaga xabar", callback_data="admin_broadcast")],
         [InlineKeyboardButton(text="🔢 Raqamlar", callback_data="admin_numbers")],
         [InlineKeyboardButton(text="🎬 Kino raqam", callback_data="admin_kino_numbers")],
         [InlineKeyboardButton(text="📦 Buyurtma tayyor", callback_data="admin_order_ready")],
@@ -1492,6 +1496,64 @@ async def admin_stats(call: CallbackQuery, state: FSMContext):
         return
     await call.message.answer(build_stats_text())
     await call.answer()
+
+@dp.callback_query(F.data == "admin_broadcast")
+async def admin_broadcast_start(call: CallbackQuery, state: FSMContext):
+    await delete_last_user_message(state)
+    if call.from_user.id != ADMIN_ID:
+        await call.answer()
+        return
+    await state.clear()
+    await state.set_state(AdminBroadcastState.message)
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
+    await call.message.answer(
+        "📣 Hammaga yuboriladigan xabarni yuboring (matn, rasm, video, hujjat yoki ovoz).",
+        reply_markup=back_kb("admin_back_send")
+    )
+    await call.answer()
+
+@dp.message(AdminBroadcastState.message)
+async def admin_broadcast_send(msg: Message, state: FSMContext):
+    await record_last_user_message(msg, state)
+    if msg.from_user.id != ADMIN_ID:
+        return
+
+    payload = build_payload_from_message(msg)
+    if payload.get("type") == "text" and not payload.get("text"):
+        await msg.answer("Iltimos, matn/rasm/video/hujjat/ovoz yuboring.", reply_markup=back_kb("admin_back_send"))
+        return
+
+    users = load_users().get("users", {})
+    user_ids = [int(uid) for uid in users.keys()]
+    if not user_ids:
+        await msg.answer("Ro'yxatdan o'tgan user topilmadi.", reply_markup=admin_panel_kb())
+        await state.clear()
+        return
+
+    progress = await msg.answer(f"📤 Yuborish boshlandi: {len(user_ids)} ta user.")
+    sent = 0
+    failed = 0
+
+    for user_id in user_ids:
+        try:
+            await send_payload_to_chat(user_id, payload, with_caption=True)
+            sent += 1
+        except Exception:
+            failed += 1
+        await asyncio.sleep(0.05)
+
+    await msg.answer(
+        f"✅ Yakunlandi.\n📨 Yuborildi: {sent}\n❌ Xato: {failed}",
+        reply_markup=admin_panel_kb()
+    )
+    try:
+        await progress.delete()
+    except Exception:
+        pass
+    await state.clear()
 
 @dp.callback_query(F.data == "admin_numbers_menu")
 async def admin_numbers_menu(call: CallbackQuery, state: FSMContext):
