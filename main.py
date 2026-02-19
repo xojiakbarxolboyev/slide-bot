@@ -19,7 +19,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.enums import ChatMemberStatus
 
 # ===================== ENV =====================
-env_path = Path(__file__).resolve().parent / ".env"
+BASE_DIR = Path(__file__).resolve().parent
+env_path = BASE_DIR / ".env"
 load_dotenv(dotenv_path=env_path)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -27,7 +28,17 @@ ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 INFO_ADMIN_ID = 7420305714  # @xolboyevv77 - ro'yxatdan o'tganlar
 CARD_NUMBER = os.getenv("CARD_NUMBER", "9860080347733265")
 CHANNEL = "@bilimulash_kanal"
-USERS_FILE = Path(__file__).resolve().parent / "users.json"
+DATA_DIR = Path(os.getenv("DATA_DIR", str(BASE_DIR))).resolve()
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+USERS_FILE = DATA_DIR / "users.json"
+EXPORT_FILE = DATA_DIR / "users_export.rtf"
+LEGACY_USERS_FILE = BASE_DIR / "users.json"
+
+if USERS_FILE != LEGACY_USERS_FILE and (not USERS_FILE.exists()) and LEGACY_USERS_FILE.exists():
+    try:
+        USERS_FILE.write_bytes(LEGACY_USERS_FILE.read_bytes())
+    except Exception:
+        pass
 
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN environment variable is missing.")
@@ -86,20 +97,38 @@ BANNER = (
 )
 
 # ===================== USER STORAGE =====================
-def load_users():
-    if USERS_FILE.exists():
-        with open(USERS_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            if "bilim" not in data:
-                data["bilim"] = {}
-            if "kino" not in data:
-                data["kino"] = {}
-            if "orders" not in data:
-                data["orders"] = []
-            return data
+def default_users_data() -> dict:
     return {"users": {}, "next_status": 1, "bilim": {}, "kino": {}, "orders": []}
 
+def load_users():
+    data = default_users_data()
+    if USERS_FILE.exists():
+        try:
+            with open(USERS_FILE, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            if isinstance(raw, dict):
+                data["users"] = raw.get("users") if isinstance(raw.get("users"), dict) else {}
+                data["bilim"] = raw.get("bilim") if isinstance(raw.get("bilim"), dict) else {}
+                data["kino"] = raw.get("kino") if isinstance(raw.get("kino"), dict) else {}
+                data["orders"] = raw.get("orders") if isinstance(raw.get("orders"), list) else []
+
+                next_status = raw.get("next_status", 1)
+                if isinstance(next_status, int) and next_status > 0:
+                    data["next_status"] = next_status
+                else:
+                    max_status = 0
+                    for u in data["users"].values():
+                        if isinstance(u, dict):
+                            status = u.get("status")
+                            if isinstance(status, int) and status > max_status:
+                                max_status = status
+                    data["next_status"] = max_status + 1
+        except Exception:
+            return data
+    return data
+
 def save_users(data):
+    USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(USERS_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
@@ -1480,7 +1509,7 @@ async def admin_users_export(call: CallbackQuery, state: FSMContext):
         await call.answer()
         return
     rtf_content = build_users_rtf(users)
-    export_path = Path(__file__).resolve().parent / "users_export.rtf"
+    export_path = EXPORT_FILE
     export_path.write_text(rtf_content, encoding="utf-8")
     await call.message.answer_document(
         FSInputFile(str(export_path)),
