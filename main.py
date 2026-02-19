@@ -1,4 +1,4 @@
-import os
+﻿import os
 import json
 import asyncio
 import random
@@ -35,7 +35,7 @@ if not BOT_TOKEN:
 bot = Bot(BOT_TOKEN)
 dp = Dispatcher()
 priority_router = Router()
-reg_router = Router()  # ro'yxat orqaga qaytish — birinchi tekshiriladi
+reg_router = Router()  # ro'yxat orqaga qaytish вЂ” birinchi tekshiriladi
 
 async def record_last_user_message(msg: Message, state: FSMContext):
     await state.update_data(last_user_chat_id=msg.chat.id, last_user_msg_id=msg.message_id)
@@ -78,10 +78,10 @@ class ThrottleMiddleware(BaseMiddleware):
 
 # ===================== BANNER (BotFatherda description qo'yiladi) =====================
 BANNER = (
-    "📌 **Bilim Ulash Bot**\n\n"
-    "✅ Slayd tayyorlash (PDF, PPT, Word)\n"
-    "✅ AI Video yaratish\n"
-    "✅ Tez va sifatli xizmat\n\n"
+    "рџ“Њ **Bilim Ulash Bot**\n\n"
+    "вњ… Slayd tayyorlash (PDF, PPT, Word)\n"
+    "вњ… AI Video yaratish\n"
+    "вњ… Tez va sifatli xizmat\n\n"
     "Botdan to'liq foydalanish uchun quyidagi kanalga obuna bo'ling va /start bosing."
 )
 
@@ -207,7 +207,7 @@ def summarize_payload(payload) -> str:
 
 def summarize_payload_list(payload) -> str:
     if isinstance(payload, list):
-        counts = {"text": 0, "photo": 0, "video": 0, "document": 0, "other": 0}
+        counts = {"text": 0, "photo": 0, "video": 0, "document": 0, "voice": 0, "other": 0}
         for item in payload:
             if isinstance(item, dict):
                 counts[item.get("type", "other")] = counts.get(item.get("type", "other"), 0) + 1
@@ -222,6 +222,8 @@ def summarize_payload_list(payload) -> str:
             parts.append(f"video {counts['video']}")
         if counts["document"]:
             parts.append(f"fayl {counts['document']}")
+        if counts["voice"]:
+            parts.append(f"ovoz {counts['voice']}")
         if counts["other"]:
             parts.append(f"boshqa {counts['other']}")
         return ", ".join(parts) if parts else "bo'sh"
@@ -234,6 +236,8 @@ def build_payload_from_message(msg: Message) -> dict:
         return {"type": "video", "file_id": msg.video.file_id, "caption": msg.caption or ""}
     if msg.document:
         return {"type": "document", "file_id": msg.document.file_id, "caption": msg.caption or ""}
+    if msg.voice:
+        return {"type": "voice", "file_id": msg.voice.file_id, "caption": msg.caption or ""}
     return {"type": "text", "text": msg.text or ""}
 
 async def send_payload(msg: Message, payload):
@@ -245,12 +249,41 @@ async def send_payload(msg: Message, payload):
             await msg.answer_video(payload.get("file_id"), caption=payload.get("caption"))
         elif ptype == "document":
             await msg.answer_document(payload.get("file_id"), caption=payload.get("caption"))
+        elif ptype == "voice":
+            await msg.answer_voice(payload.get("file_id"), caption=payload.get("caption"))
         elif ptype == "text":
             await msg.answer(payload.get("text", ""))
         else:
             await msg.answer(payload.get("caption") or payload.get("text") or "")
     else:
         await msg.answer(str(payload))
+
+def get_answer_value(msg: Message) -> str:
+    if msg.text:
+        return msg.text
+    if msg.voice:
+        return f"[voice:{msg.voice.file_id}]"
+    if msg.audio:
+        return f"[audio:{msg.audio.file_id}]"
+    if msg.video_note:
+        return f"[video_note:{msg.video_note.file_id}]"
+    return ""
+
+async def send_payload_to_chat(chat_id: int, payload, with_caption: bool = True):
+    if not isinstance(payload, dict):
+        await bot.send_message(chat_id, str(payload))
+        return
+    ptype = payload.get("type")
+    if ptype == "photo":
+        await bot.send_photo(chat_id, payload.get("file_id"), caption=payload.get("caption") if with_caption else None)
+    elif ptype == "video":
+        await bot.send_video(chat_id, payload.get("file_id"), caption=payload.get("caption") if with_caption else None)
+    elif ptype == "document":
+        await bot.send_document(chat_id, payload.get("file_id"), caption=payload.get("caption") if with_caption else None)
+    elif ptype == "voice":
+        await bot.send_voice(chat_id, payload.get("file_id"), caption=payload.get("caption") if with_caption else None)
+    else:
+        await bot.send_message(chat_id, payload.get("text") or payload.get("caption") or "")
 
 def record_paid_order(user_id: int, service: str):
     data = load_users()
@@ -277,14 +310,14 @@ def build_stats_text() -> str:
     video_users = len(svc_users.get("video", set()))
 
     lines = [
-        "📊 Statistika",
+        "рџ“Љ Statistika",
         "",
-        f"👥 Umumiy userlar: {users_total}",
-        f"✅ To'lov tasdiqlangan buyurtmalar: {total_paid}",
+        f"рџ‘Ґ Umumiy userlar: {users_total}",
+        f"вњ… To'lov tasdiqlangan buyurtmalar: {total_paid}",
         "",
-        "Xizmatlar bo‘yicha (unikal userlar):",
-        f"📝 Slayd: {slide_users}",
-        f"🎥 AI Video: {video_users}",
+        "Xizmatlar boвЂyicha (unikal userlar):",
+        f"рџ“ќ Slayd: {slide_users}",
+        f"рџЋҐ AI Video: {video_users}",
     ]
     return "\n".join(lines)
 
@@ -372,15 +405,15 @@ class KinoAdminState(StatesGroup):
 # ===================== KEYBOARDS =====================
 def menu_kb(is_admin: bool = False):
     rows = [
-        [KeyboardButton(text="🧑‍💼 Admin bilan bog'lanish")],
-        [KeyboardButton(text="📝 Slayd buyurtma")],
-        [KeyboardButton(text="🎥 AI Video")],
-        [KeyboardButton(text="🎬 Kino kodlari")],
-        [KeyboardButton(text="📚 Bilim Ulash")],
-        [KeyboardButton(text="🤖 Bot yaratib berish")],
+        [KeyboardButton(text="рџ§‘вЂЌрџ’ј Admin bilan bog'lanish")],
+        [KeyboardButton(text="рџ“ќ Slayd buyurtma")],
+        [KeyboardButton(text="рџЋҐ AI Video")],
+        [KeyboardButton(text="рџЋ¬ Kino kodlari")],
+        [KeyboardButton(text="рџ“љ Bilim Ulash")],
+        [KeyboardButton(text="рџ¤– Bot yaratib berish")],
     ]
     if is_admin:
-        rows.append([KeyboardButton(text="⚙️ Admin panel")])
+        rows.append([KeyboardButton(text="вљ™пёЏ Admin panel")])
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
 
 def sub_kb():
@@ -391,31 +424,31 @@ def sub_kb():
 
 def back_kb(callback_data: str):
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬅️ Orqaga qaytish", callback_data=callback_data)],
+        [InlineKeyboardButton(text="в¬…пёЏ Orqaga qaytish", callback_data=callback_data)],
     ])
 
 def admin_panel_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📊 Statistika", callback_data="admin_stats")],
-        [InlineKeyboardButton(text="🧾 User info", callback_data="admin_users_export")],
-        [InlineKeyboardButton(text="🔢 Raqamlar", callback_data="admin_numbers")],
-        [InlineKeyboardButton(text="🎬 Kino raqam", callback_data="admin_kino_numbers")],
-        [InlineKeyboardButton(text="📦 Buyurtma tayyor", callback_data="admin_order_ready")],
-        [InlineKeyboardButton(text="⬅️ Orqaga qaytish", callback_data="admin_back_main")],
+        [InlineKeyboardButton(text="рџ“Љ Statistika", callback_data="admin_stats")],
+        [InlineKeyboardButton(text="рџ§ѕ User info", callback_data="admin_users_export")],
+        [InlineKeyboardButton(text="рџ”ў Raqamlar", callback_data="admin_numbers")],
+        [InlineKeyboardButton(text="рџЋ¬ Kino raqam", callback_data="admin_kino_numbers")],
+        [InlineKeyboardButton(text="рџ“¦ Buyurtma tayyor", callback_data="admin_order_ready")],
+        [InlineKeyboardButton(text="в¬…пёЏ Orqaga qaytish", callback_data="admin_back_main")],
     ])
 
 def admin_numbers_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="➕ Raqam qo'shish", callback_data="admin_numbers_add")],
-        [InlineKeyboardButton(text="🗑️ Raqam o'chirish", callback_data="admin_numbers_delete")],
-        [InlineKeyboardButton(text="⬅️ Orqaga qaytish", callback_data="admin_back_main")],
+        [InlineKeyboardButton(text="вћ• Raqam qo'shish", callback_data="admin_numbers_add")],
+        [InlineKeyboardButton(text="рџ—‘пёЏ Raqam o'chirish", callback_data="admin_numbers_delete")],
+        [InlineKeyboardButton(text="в¬…пёЏ Orqaga qaytish", callback_data="admin_back_main")],
     ])
 
 def admin_kino_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="➕ Raqam qo'shish", callback_data="admin_kino_add")],
-        [InlineKeyboardButton(text="🗑️ Raqam o'chirish", callback_data="admin_kino_delete")],
-        [InlineKeyboardButton(text="⬅️ Orqaga qaytish", callback_data="admin_back_main")],
+        [InlineKeyboardButton(text="вћ• Raqam qo'shish", callback_data="admin_kino_add")],
+        [InlineKeyboardButton(text="рџ—‘пёЏ Raqam o'chirish", callback_data="admin_kino_delete")],
+        [InlineKeyboardButton(text="в¬…пёЏ Orqaga qaytish", callback_data="admin_back_main")],
     ])
 
 # ===================== START + BANNER + OBUNA =====================
@@ -424,7 +457,7 @@ async def start(msg: Message, state: FSMContext):
     await state.clear()
     # Agar allaqachon ro'yxatdan o'tgan bo'lsa - menyu
     if is_registered(msg.from_user.id):
-        await msg.answer("Xizmatni tanlang 👇", reply_markup=menu_kb(msg.from_user.id == ADMIN_ID))
+        await msg.answer("Xizmatni tanlang рџ‘‡", reply_markup=menu_kb(msg.from_user.id == ADMIN_ID))
         return
     # Banner (bot nima qiladi)
     await msg.answer(BANNER, parse_mode="Markdown")
@@ -439,12 +472,12 @@ async def start(msg: Message, state: FSMContext):
 # ===================== ADMIN PANEL (START dan keyin, boshqa handlerlardan oldin) =====================
 @dp.message((F.text == "/admin") | (F.text.contains("Admin panel")))
 async def admin_panel_first(msg: Message, state: FSMContext):
-    """Admin panel — faqat admin uchun."""
+    """Admin panel вЂ” faqat admin uchun."""
     if msg.from_user.id != ADMIN_ID:
         return
     await state.clear()
     await msg.answer(
-        "⚙️ Admin panel\n\nQuyidagi tugmalardan birini tanlang:",
+        "вљ™пёЏ Admin panel\n\nQuyidagi tugmalardan birini tanlang:",
         reply_markup=admin_panel_kb()
     )
 
@@ -458,14 +491,14 @@ async def check_subscription(user_id: int) -> bool:
 @dp.callback_query(SubState.waiting_check, F.data == "check_sub")
 async def check_sub_cb(call: CallbackQuery, state: FSMContext):
     if await check_subscription(call.from_user.id):
-        await call.message.edit_text("✅ Obuna tasdiqlandi! Endi ro'yxatdan o'ting.")
-        await call.message.answer("👤  Ism va familiyangizni yozing:", reply_markup=back_kb("reg_back_sub"))
+        await call.message.edit_text("вњ… Obuna tasdiqlandi! Endi ro'yxatdan o'ting.")
+        await call.message.answer("рџ‘¤  Ism va familiyangizni yozing:", reply_markup=back_kb("reg_back_sub"))
         await state.set_state(RegState.name)
     else:
         await call.answer("Siz kanalga obuna bo'lmagansiz. Avval obuna bo'ling.", show_alert=True)
 
 # ===================== RO'YXATDAN O'TISH (Orqaga qaytish) =====================
-# reg_router ga yoziladi — dp.include_router(reg_router) birinchi, shuning uchun birinchi tekshiriladi
+# reg_router ga yoziladi вЂ” dp.include_router(reg_router) birinchi, shuning uchun birinchi tekshiriladi
 @reg_router.callback_query(F.data.startswith("reg_back_"))
 async def reg_back_any(call: CallbackQuery, state: FSMContext):
     await delete_last_user_message(state)
@@ -480,17 +513,17 @@ async def reg_back_any(call: CallbackQuery, state: FSMContext):
     elif data == "reg_back_name":
         await state.update_data(age=None)
         await state.set_state(RegState.name)
-        text = "👤  Ism va familiyangizni yozing:"
+        text = "рџ‘¤  Ism va familiyangizni yozing:"
         markup = back_kb("reg_back_sub")
     elif data == "reg_back_age":
         await state.update_data(region=None)
         await state.set_state(RegState.age)
-        text = "🎂  Yoshingiz nechida?"
+        text = "рџЋ‚  Yoshingiz nechida?"
         markup = back_kb("reg_back_name")
     elif data == "reg_back_region":
         await state.update_data(phone=None)
         await state.set_state(RegState.region)
-        text = "📍  Qaysi viloyatdan?"
+        text = "рџ“Ќ  Qaysi viloyatdan?"
         markup = back_kb("reg_back_age")
     else:
         return
@@ -513,40 +546,55 @@ dp.message.middleware(ThrottleMiddleware(min_interval=0.7, warn_interval=2.0))
 async def debug_ping(msg: Message):
     await msg.answer("pong")
 
-@dp.message(RegState.name, F.text)
+@dp.message(RegState.name)
 async def reg_name(msg: Message, state: FSMContext):
     await record_last_user_message(msg, state)
-    await state.update_data(name=msg.text)
-    await msg.answer("🎂  Yoshingiz nechida?", reply_markup=back_kb("reg_back_name"))
+    value = get_answer_value(msg)
+    if not value:
+        await msg.answer("Iltimos, javob yuboring.", reply_markup=back_kb("reg_back_name"))
+        return
+    await state.update_data(name=value)
+    await msg.answer("рџЋ‚  Yoshingiz nechida?", reply_markup=back_kb("reg_back_name"))
     await state.set_state(RegState.age)
 
-@dp.message(RegState.age, F.text)
+@dp.message(RegState.age)
 async def reg_age(msg: Message, state: FSMContext):
     await record_last_user_message(msg, state)
-    await state.update_data(age=msg.text)
-    await msg.answer("📍  Qaysi viloyatdan?", reply_markup=back_kb("reg_back_age"))
+    value = get_answer_value(msg)
+    if not value:
+        await msg.answer("Iltimos, javob yuboring.", reply_markup=back_kb("reg_back_age"))
+        return
+    await state.update_data(age=value)
+    await msg.answer("рџ“Ќ  Qaysi viloyatdan?", reply_markup=back_kb("reg_back_age"))
     await state.set_state(RegState.region)
 
-@dp.message(RegState.region, F.text)
+@dp.message(RegState.region)
 async def reg_region(msg: Message, state: FSMContext):
     await record_last_user_message(msg, state)
-    await state.update_data(region=msg.text)
-    await msg.answer("📞  Telefon raqamingizni yozing:", reply_markup=back_kb("reg_back_region"))
+    value = get_answer_value(msg)
+    if not value:
+        await msg.answer("Iltimos, javob yuboring.", reply_markup=back_kb("reg_back_region"))
+        return
+    await state.update_data(region=value)
+    await msg.answer("рџ“ћ  Telefon raqamingizni yozing:", reply_markup=back_kb("reg_back_region"))
     await state.set_state(RegState.phone)
 
-@dp.message(RegState.phone, F.text)
+@dp.message(RegState.phone)
 async def reg_phone(msg: Message, state: FSMContext):
     await record_last_user_message(msg, state)
     data = await state.get_data()
     name = data["name"]
     age = data["age"]
     region = data["region"]
-    phone = msg.text
+    phone = get_answer_value(msg)
+    if not phone:
+        await msg.answer("Iltimos, javob yuboring.", reply_markup=back_kb("reg_back_region"))
+        return
     status = register_user(msg.from_user.id, name, age, region, phone)
     await state.clear()
     await msg.answer(
-        f"🎉  Tabriklaymiz! Ro'yxatdan o'tdingiz.\n"
-        f"📋 Sizning tartib raqamingiz: **{status}**\n\n"
+        f"рџЋ‰  Tabriklaymiz! Ro'yxatdan o'tdingiz.\n"
+        f"рџ“‹ Sizning tartib raqamingiz: **{status}**\n\n"
         "? Endi xizmatlardan to'liq foydalanishingiz mumkin.",
         parse_mode="Markdown",
         reply_markup=menu_kb(msg.from_user.id == ADMIN_ID)
@@ -554,13 +602,13 @@ async def reg_phone(msg: Message, state: FSMContext):
     # Ma'lumotlarni @xolboyevv77 ga yuborish
     await bot.send_message(
         INFO_ADMIN_ID,
-        f"🆕 Yangi ro'yxatdan o'tgan:\n\n"
-        f"👤 Ism: {name}\n"
-        f"🎂 Yosh: {age}\n"
-        f"📍 Viloyat: {region}\n"
-        f"📞 Tel: {phone}\n"
-        f"🆔 User: @{msg.from_user.username or msg.from_user.id} (ID: {msg.from_user.id})\n"
-        f"📋 Tartib raqami: {status}"
+        f"рџ†• Yangi ro'yxatdan o'tgan:\n\n"
+        f"рџ‘¤ Ism: {name}\n"
+        f"рџЋ‚ Yosh: {age}\n"
+        f"рџ“Ќ Viloyat: {region}\n"
+        f"рџ“ћ Tel: {phone}\n"
+        f"рџ†” User: @{msg.from_user.username or msg.from_user.id} (ID: {msg.from_user.id})\n"
+        f"рџ“‹ Tartib raqami: {status}"
     )
 
 # ===================== XIZMATLAR (faqat ro'yxatdan o'tganlar) =====================
@@ -573,16 +621,17 @@ async def bilim_ulash_start(msg: Message, state: FSMContext):
         await msg.answer(" Avval ro'yxatdan o'ting. /start bosing.", reply_markup=sub_kb())
         return
     await state.clear()
-    await msg.answer("📋 Raqamni kiriting:", reply_markup=back_kb("back_bilim_menu"))
+    await msg.answer("рџ“‹ Raqamni kiriting:", reply_markup=back_kb("back_bilim_menu"))
     await state.set_state(BilimUlashUserState.user_number)
 
-@dp.message(BilimUlashUserState.user_number, F.text)
+@dp.message(BilimUlashUserState.user_number)
 async def bilim_ulash_send(msg: Message, state: FSMContext):
     await record_last_user_message(msg, state)
-    if not msg.text.isdigit():
+    value = get_answer_value(msg)
+    if not value.isdigit():
         await msg.answer("Raqamni to'g'ri kiriting (faqat son):", reply_markup=back_kb("back_bilim_menu"))
         return
-    num = int(msg.text)
+    num = int(value)
     content = get_bilim_message(num)
     if content is None:
         await msg.answer("Bu raqam bo'yicha ma'lumot topilmadi. Qayta kiriting:", reply_markup=back_kb("back_bilim_menu"))
@@ -592,26 +641,27 @@ async def bilim_ulash_send(msg: Message, state: FSMContext):
             await send_payload(msg, item)
     else:
         await send_payload(msg, content)
-    await msg.answer("Xizmatni tanlang 👇", reply_markup=menu_kb(msg.from_user.id == ADMIN_ID))
+    await msg.answer("Xizmatni tanlang рџ‘‡", reply_markup=menu_kb(msg.from_user.id == ADMIN_ID))
     await state.clear()
 
 # ===================== KINO KODLARI ==================
 @dp.message(F.text.contains("Kino kodlari"))
 async def kino_start(msg: Message, state: FSMContext):
     if not is_registered(msg.from_user.id):
-        await msg.answer("🔐 Avval ro‘yxatdan o‘ting. /start bosing.", reply_markup=sub_kb())
+        await msg.answer("рџ”ђ Avval roвЂyxatdan oвЂting. /start bosing.", reply_markup=sub_kb())
         return
     await state.clear()
-    await msg.answer("🎬 Kino raqamini kiriting:", reply_markup=back_kb("back_kino_menu"))
+    await msg.answer("рџЋ¬ Kino raqamini kiriting:", reply_markup=back_kb("back_kino_menu"))
     await state.set_state(KinoUserState.user_number)
 
-@dp.message(KinoUserState.user_number, F.text)
+@dp.message(KinoUserState.user_number)
 async def kino_send(msg: Message, state: FSMContext):
     await record_last_user_message(msg, state)
-    if not msg.text.isdigit():
+    value = get_answer_value(msg)
+    if not value.isdigit():
         await msg.answer("Raqamni to'g'ri kiriting (faqat son):", reply_markup=back_kb("back_kino_menu"))
         return
-    num = int(msg.text)
+    num = int(value)
     content = get_kino_message(num)
     if content is None:
         await msg.answer("Bu raqam bo'yicha ma'lumot topilmadi. Qayta kiriting:", reply_markup=back_kb("back_kino_menu"))
@@ -621,7 +671,7 @@ async def kino_send(msg: Message, state: FSMContext):
             await send_payload(msg, item)
     else:
         await send_payload(msg, content)
-    await msg.answer("Xizmatni tanlang 👇", reply_markup=menu_kb(msg.from_user.id == ADMIN_ID))
+    await msg.answer("Xizmatni tanlang рџ‘‡", reply_markup=menu_kb(msg.from_user.id == ADMIN_ID))
     await state.clear()
 
 @dp.callback_query(F.data == "back_kino_menu")
@@ -632,7 +682,7 @@ async def back_kino_menu(call: CallbackQuery, state: FSMContext):
         await call.message.delete()
     except Exception:
         pass
-    await call.message.answer("Xizmatni tanlang 👇", reply_markup=menu_kb(call.from_user.id == ADMIN_ID))
+    await call.message.answer("Xizmatni tanlang рџ‘‡", reply_markup=menu_kb(call.from_user.id == ADMIN_ID))
     await call.answer()
 
 @dp.callback_query(F.data == "back_bilim_menu")
@@ -643,7 +693,7 @@ async def back_bilim_menu(call: CallbackQuery, state: FSMContext):
         await call.message.delete()
     except Exception:
         pass
-    await call.message.answer("Xizmatni tanlang 👇", reply_markup=menu_kb(call.from_user.id == ADMIN_ID))
+    await call.message.answer("Xizmatni tanlang рџ‘‡", reply_markup=menu_kb(call.from_user.id == ADMIN_ID))
     await call.answer()
 
 # ===================== SLAYD =========================
@@ -653,55 +703,79 @@ async def slide_start(msg: Message, state: FSMContext):
     if not is_registered(msg.from_user.id):
         await msg.answer(" Avval ro'yxatdan o'ting. /start bosing.", reply_markup=sub_kb())
         return
-    await msg.answer("📌  Slayd mavzusini yozing:", reply_markup=back_kb("back_to_menu"))
+    await msg.answer("рџ“Њ  Slayd mavzusini yozing:", reply_markup=back_kb("back_to_menu"))
     await state.set_state(SlideState.topic)
 
-@dp.message(SlideState.topic, F.text)
+@dp.message(SlideState.topic)
 async def slide_topic(msg: Message, state: FSMContext):
     await record_last_user_message(msg, state)
-    await state.update_data(topic=msg.text)
-    await msg.answer("📄  Necha varaq bo'lsin?", reply_markup=back_kb("back_slide_topic"))
+    value = get_answer_value(msg)
+    if not value:
+        await msg.answer("Iltimos, javob yuboring.", reply_markup=back_kb("back_to_menu"))
+        return
+    await state.update_data(topic=value)
+    await msg.answer("рџ“„  Necha varaq bo'lsin?", reply_markup=back_kb("back_slide_topic"))
     await state.set_state(SlideState.pages)
 
-@dp.message(SlideState.pages, F.text)
+@dp.message(SlideState.pages)
 async def slide_pages(msg: Message, state: FSMContext):
     await record_last_user_message(msg, state)
-    await state.update_data(pages=msg.text)
-    await msg.answer("🎨  Qaysi ranglar ko'p bo'lsin?", reply_markup=back_kb("back_slide_pages"))
+    value = get_answer_value(msg)
+    if not value:
+        await msg.answer("Iltimos, javob yuboring.", reply_markup=back_kb("back_slide_topic"))
+        return
+    await state.update_data(pages=value)
+    await msg.answer("рџЋЁ  Qaysi ranglar ko'p bo'lsin?", reply_markup=back_kb("back_slide_pages"))
     await state.set_state(SlideState.colors)
 
-@dp.message(SlideState.colors, F.text)
+@dp.message(SlideState.colors)
 async def slide_colors(msg: Message, state: FSMContext):
     await record_last_user_message(msg, state)
-    await state.update_data(colors=msg.text)
-    await msg.answer("📝  Matn qanchalik ko'p bo'lsin? (kam / o'rtacha / ko'p)", reply_markup=back_kb("back_slide_colors"))
+    value = get_answer_value(msg)
+    if not value:
+        await msg.answer("Iltimos, javob yuboring.", reply_markup=back_kb("back_slide_pages"))
+        return
+    await state.update_data(colors=value)
+    await msg.answer("рџ“ќ  Matn qanchalik ko'p bo'lsin? (kam / o'rtacha / ko'p)", reply_markup=back_kb("back_slide_colors"))
     await state.set_state(SlideState.text_amount)
 
-@dp.message(SlideState.text_amount, F.text)
+@dp.message(SlideState.text_amount)
 
 async def slide_text(msg: Message, state: FSMContext):
     await record_last_user_message(msg, state)
-    await state.update_data(text_amount=msg.text)
-    await msg.answer("⏰ ? Qancha vaqtda tayyor bo'lsin? (minimal 2 soat)", reply_markup=back_kb("back_slide_text"))
+    value = get_answer_value(msg)
+    if not value:
+        await msg.answer("Iltimos, javob yuboring.", reply_markup=back_kb("back_slide_colors"))
+        return
+    await state.update_data(text_amount=value)
+    await msg.answer("вЏ° ? Qancha vaqtda tayyor bo'lsin? (minimal 2 soat)", reply_markup=back_kb("back_slide_text"))
     await state.set_state(SlideState.deadline)
 
-@dp.message(SlideState.deadline, F.text)
+@dp.message(SlideState.deadline)
 async def slide_deadline(msg: Message, state: FSMContext):
     await record_last_user_message(msg, state)
-    await state.update_data(deadline=msg.text)
-    await msg.answer("📂  Qaysi formatda bo'lsin? (pdf / ppt / word / boshqasi)", reply_markup=back_kb("back_slide_deadline"))
+    value = get_answer_value(msg)
+    if not value:
+        await msg.answer("Iltimos, javob yuboring.", reply_markup=back_kb("back_slide_text"))
+        return
+    await state.update_data(deadline=value)
+    await msg.answer("рџ“‚  Qaysi formatda bo'lsin? (pdf / ppt / word / boshqasi)", reply_markup=back_kb("back_slide_deadline"))
     await state.set_state(SlideState.format)
 
-@dp.message(SlideState.format, F.text)
+@dp.message(SlideState.format)
 async def slide_format(msg: Message, state: FSMContext):
     await record_last_user_message(msg, state)
-    price = random.choice(range(20000, 25000+1, 1000))
-    await state.update_data(format=msg.text, price=price)
+    value = get_answer_value(msg)
+    if not value:
+        await msg.answer("Iltimos, javob yuboring.", reply_markup=back_kb("back_slide_deadline"))
+        return
+    price = random.choice(range(15000, 20000 + 1, 1000))
+    await state.update_data(format=value, price=price)
     await msg.answer(
-        f"💰  To'lov: {price} so'm\n\n"
-        f"💳  Karta: {CARD_NUMBER}\n\n"
-        "⚠️  To'lov qilganingizdan keyin chekini yuboring.\n"
-        "❌ ? Cheksiz to'lov qabul qilinmaydi.",
+        f"рџ’°  To'lov: {price} so'm\n\n"
+        f"рџ’і  Karta: {CARD_NUMBER}\n\n"
+        "вљ пёЏ  To'lov qilganingizdan keyin chekini yuboring.\n"
+        "вќЊ ? Cheksiz to'lov qabul qilinmaydi.",
         reply_markup=back_kb("back_slide_format")
     )
     await state.set_state(SlideState.payment)
@@ -726,26 +800,26 @@ async def slide_payment_any(msg: Message, state: FSMContext, photo_id=None, doc_
     status = get_user_status(msg.from_user.id)
 
     status_msg = await msg.answer(
-        "⏳ ? Admin tekshirmoqda. Ish boshlanganda sizga xabar beramiz."
+        "вЏі ? Admin tekshirmoqda. Ish boshlanganda sizga xabar beramiz."
     )
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="➕", callback_data=f"ok_slide_{msg.from_user.id}_{status_msg.message_id}"),
-            InlineKeyboardButton(text="➖", callback_data=f"no_slide_{msg.from_user.id}_{status_msg.message_id}"),
+            InlineKeyboardButton(text="вћ•", callback_data=f"ok_slide_{msg.from_user.id}_{status_msg.message_id}"),
+            InlineKeyboardButton(text="вћ–", callback_data=f"no_slide_{msg.from_user.id}_{status_msg.message_id}"),
         ]
     ])
 
     text = (
-        f"🆕 SLAYD BUYURTMA | 📋 #{status}\n\n"
-        f"👤 @{msg.from_user.username or msg.from_user.id}\n"
-        f"📌 Mavzu: {data['topic']}\n"
-        f"📄 Varaq: {data['pages']}\n"
-        f"🎨 Ranglar: {data['colors']}\n"
-        f"📝 Matn: {data['text_amount']}\n"
-        f"⏰ Muddat: {data['deadline']}\n"
-        f"📂 Format: {data['format']}\n"
-        f"💰 {data['price']} so'm"
+        f"рџ†• SLAYD BUYURTMA | рџ“‹ #{status}\n\n"
+        f"рџ‘¤ @{msg.from_user.username or msg.from_user.id}\n"
+        f"рџ“Њ Mavzu: {data['topic']}\n"
+        f"рџ“„ Varaq: {data['pages']}\n"
+        f"рџЋЁ Ranglar: {data['colors']}\n"
+        f"рџ“ќ Matn: {data['text_amount']}\n"
+        f"вЏ° Muddat: {data['deadline']}\n"
+        f"рџ“‚ Format: {data['format']}\n"
+        f"рџ’° {data['price']} so'm"
     )
 
     if photo_id:
@@ -753,7 +827,7 @@ async def slide_payment_any(msg: Message, state: FSMContext, photo_id=None, doc_
     elif doc_id:
         await bot.send_document(ADMIN_ID, doc_id, caption=text, reply_markup=kb)
     else:
-        await bot.send_message(ADMIN_ID, text + "\n\n⚠️ Chek rasm yoki hujjat ko'rinishida yuborilmadi", reply_markup=kb)
+        await bot.send_message(ADMIN_ID, text + "\n\nвљ пёЏ Chek rasm yoki hujjat ko'rinishida yuborilmadi", reply_markup=kb)
 
     await state.clear()
 
@@ -770,7 +844,7 @@ async def back_slide_handlers(call: CallbackQuery, state: FSMContext):
             await call.message.delete()
         except Exception:
             pass
-        await call.message.answer("📌  Slayd mavzusini yozing:", reply_markup=back_kb("back_to_menu"))
+        await call.message.answer("рџ“Њ  Slayd mavzusini yozing:", reply_markup=back_kb("back_to_menu"))
     
     elif data == "back_slide_pages":
         await state.set_state(SlideState.pages)
@@ -778,7 +852,7 @@ async def back_slide_handlers(call: CallbackQuery, state: FSMContext):
             await call.message.delete()
         except Exception:
             pass
-        await call.message.answer("📄  Necha varaq bo'lsin?", reply_markup=back_kb("back_slide_topic"))
+        await call.message.answer("рџ“„  Necha varaq bo'lsin?", reply_markup=back_kb("back_slide_topic"))
         
     elif data == "back_slide_colors":
         await state.set_state(SlideState.colors)
@@ -795,7 +869,7 @@ async def back_slide_handlers(call: CallbackQuery, state: FSMContext):
             await call.message.delete()
         except Exception:
             pass
-        await call.message.answer("📝  Matn qanchalik ko'p bo'lsin? (kam / o'rtacha / ko'p)", reply_markup=back_kb("back_slide_colors"))
+        await call.message.answer("рџ“ќ  Matn qanchalik ko'p bo'lsin? (kam / o'rtacha / ko'p)", reply_markup=back_kb("back_slide_colors"))
         
     elif data == "back_slide_deadline":
         await state.set_state(SlideState.deadline)
@@ -803,7 +877,7 @@ async def back_slide_handlers(call: CallbackQuery, state: FSMContext):
             await call.message.delete()
         except Exception:
             pass
-        await call.message.answer("⏰ ? Qancha vaqtda tayyor bo'lsin? (minimal 2 soat)", reply_markup=back_kb("back_slide_text"))
+        await call.message.answer("вЏ° ? Qancha vaqtda tayyor bo'lsin? (minimal 2 soat)", reply_markup=back_kb("back_slide_text"))
     
     elif data == "back_slide_format":
         await state.set_state(SlideState.format)
@@ -811,7 +885,7 @@ async def back_slide_handlers(call: CallbackQuery, state: FSMContext):
             await call.message.delete()
         except Exception:
             pass
-        await call.message.answer("📂  Qaysi formatda bo'lsin? (pdf / ppt / word / boshqasi)", reply_markup=back_kb("back_slide_deadline"))
+        await call.message.answer("рџ“‚  Qaysi formatda bo'lsin? (pdf / ppt / word / boshqasi)", reply_markup=back_kb("back_slide_deadline"))
 
 @dp.callback_query(F.data == "back_to_menu")
 async def back_to_main_menu(call: CallbackQuery, state: FSMContext):
@@ -821,7 +895,7 @@ async def back_to_main_menu(call: CallbackQuery, state: FSMContext):
         await call.message.delete()
     except Exception:
         pass
-    await call.message.answer("Xizmatni tanlang 👇", reply_markup=menu_kb(call.from_user.id == ADMIN_ID))
+    await call.message.answer("Xizmatni tanlang рџ‘‡", reply_markup=menu_kb(call.from_user.id == ADMIN_ID))
 
 # ===================== ADMIN CONTACT =====================
 @priority_router.message(F.text.contains("Admin bilan bog'lanish") | F.text.contains("Admin bilan boglanish"))
@@ -855,17 +929,17 @@ async def bot_create_contact(msg: Message, state: FSMContext):
 @dp.message(F.text.contains("AI Video"))
 async def ai_video(msg: Message, state: FSMContext):
     if not is_registered(msg.from_user.id):
-        await msg.answer("🔐 Avval ro‘yxatdan o‘ting. /start bosing.", reply_markup=sub_kb())
+        await msg.answer("рџ”ђ Avval roвЂyxatdan oвЂting. /start bosing.", reply_markup=sub_kb())
         return
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🖼️ Rasmni video qilish", callback_data="ai_img_to_video")],
-        [InlineKeyboardButton(text="🎨 Rasm yaratish", callback_data="ai_image_gen")],
-        [InlineKeyboardButton(text="🎬 Men hohlagan video", callback_data="ai_custom_video")],
+        [InlineKeyboardButton(text="рџ–јпёЏ Rasmni video qilish", callback_data="ai_img_to_video")],
+        [InlineKeyboardButton(text="рџЋЁ Rasm yaratish", callback_data="ai_image_gen")],
+        [InlineKeyboardButton(text="рџЋ¬ Men hohlagan video", callback_data="ai_custom_video")],
     ])
     await state.set_state(VideoState.menu)
     await msg.answer(
-        "🎬 AI video xizmati.\n📌 Max 10 soniya.\n\n"
-        "👇 Xizmat turini tanlang:",
+        "рџЋ¬ AI video xizmati.\nрџ“Њ Max 10 soniya.\n\n"
+        "рџ‘‡ Xizmat turini tanlang:",
         reply_markup=kb
     )
 
@@ -907,7 +981,7 @@ async def ai_custom_video(call: CallbackQuery, state: FSMContext):
     except Exception:
         pass
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💬 Adminga yozish", url=f"tg://user?id={INFO_ADMIN_ID}")]
+        [InlineKeyboardButton(text="рџ’¬ Adminga yozish", url=f"tg://user?id={INFO_ADMIN_ID}")]
     ])
     await call.message.answer(
         "Siz o'zingiz hohlagandek video tayyorlash uchun adminga yozing.",
@@ -932,59 +1006,75 @@ async def ai_img_to_video_image_other(msg: Message, state: FSMContext):
     await record_last_user_message(msg, state)
     await msg.answer("Iltimos, rasm yuboring.", reply_markup=back_kb("back_ai_menu"))
 
-@dp.message(VideoState.img_to_video_prompt, F.text)
+@dp.message(VideoState.img_to_video_prompt)
 async def ai_img_to_video_prompt(msg: Message, state: FSMContext):
     await record_last_user_message(msg, state)
+    value = get_answer_value(msg)
+    if not value:
+        await msg.answer("Iltimos, javob yuboring.", reply_markup=back_kb("back_ai_image"))
+        return
     price = random.choice(range(15000, 25001, 1000))
-    await state.update_data(kind="img_to_video", prompt=msg.text, price=price)
+    await state.update_data(kind="img_to_video", prompt=value, price=price)
     await msg.answer(
         "Tushundim, endi ishni boshlashim uchun to'lov qilishingiz kerak bo'ladi.\n\n"
-        f"💰 To'lov miqdori: {price} so'm\n"
-        f"💳 Karta raqam: {CARD_NUMBER}\n"
-        "🧾 Shu karta raqamga to'lov qilib chekini yuboring.\n"
-        "❌ Eslatib o'tamiz, cheksiz to'lov qabul qilinmaydi!",
+        f"рџ’° To'lov miqdori: {price} so'm\n"
+        f"рџ’і Karta raqam: {CARD_NUMBER}\n"
+        "рџ§ѕ Shu karta raqamga to'lov qilib chekini yuboring.\n"
+        "вќЊ Eslatib o'tamiz, cheksiz to'lov qabul qilinmaydi!",
         reply_markup=back_kb("back_ai_prompt")
     )
     await state.set_state(VideoState.img_to_video_payment)
 
 # -------- Rasm yaratish --------
-@dp.message(VideoState.image_gen_prompt, F.text)
+@dp.message(VideoState.image_gen_prompt)
 async def ai_image_gen_prompt(msg: Message, state: FSMContext):
     await record_last_user_message(msg, state)
-    await state.update_data(prompt=msg.text)
+    value = get_answer_value(msg)
+    if not value:
+        await msg.answer("Iltimos, javob yuboring.", reply_markup=back_kb("back_ai_imagegen_prompt"))
+        return
+    await state.update_data(prompt=value)
     await msg.answer(
         "Rasm qanaqa formatda bo'lsin? (Instagram stories / kvadrat / YouTube format va hokazo)",
         reply_markup=back_kb("back_ai_imagegen_prompt")
     )
     await state.set_state(VideoState.image_gen_format)
 
-@dp.message(VideoState.image_gen_format, F.text)
+@dp.message(VideoState.image_gen_format)
 async def ai_image_gen_format(msg: Message, state: FSMContext):
     await record_last_user_message(msg, state)
+    value = get_answer_value(msg)
+    if not value:
+        await msg.answer("Iltimos, javob yuboring.", reply_markup=back_kb("back_ai_imagegen_format"))
+        return
     price = random.choice(range(8000, 15001, 1000))
-    await state.update_data(kind="image_gen", format=msg.text, price=price)
+    await state.update_data(kind="image_gen", format=value, price=price)
     await msg.answer(
         "Tushundim, endi ishni boshlashim uchun to'lov qilishingiz kerak bo'ladi.\n\n"
-        f"💰 To'lov miqdori: {price} so'm\n"
-        f"💳 Karta raqam: {CARD_NUMBER}\n"
-        "🧾 Shu karta raqamga to'lov qilib chekini yuboring.\n"
-        "❌ Eslatib o'tamiz, cheksiz to'lov qabul qilinmaydi!",
+        f"рџ’° To'lov miqdori: {price} so'm\n"
+        f"рџ’і Karta raqam: {CARD_NUMBER}\n"
+        "рџ§ѕ Shu karta raqamga to'lov qilib chekini yuboring.\n"
+        "вќЊ Eslatib o'tamiz, cheksiz to'lov qabul qilinmaydi!",
         reply_markup=back_kb("back_ai_imagegen_format")
     )
     await state.set_state(VideoState.image_gen_payment)
 
 # -------- Men hohlagan video --------
-@dp.message(VideoState.custom_prompt, F.text)
+@dp.message(VideoState.custom_prompt)
 async def ai_custom_prompt(msg: Message, state: FSMContext):
     await record_last_user_message(msg, state)
+    value = get_answer_value(msg)
+    if not value:
+        await msg.answer("Iltimos, javob yuboring.", reply_markup=back_kb("back_ai_custom"))
+        return
     price = random.choice(range(15000, 25001, 1000))
-    await state.update_data(kind="custom_video", prompt=msg.text, price=price)
+    await state.update_data(kind="custom_video", prompt=value, price=price)
     await msg.answer(
         "Tushundim, endi ishni boshlashim uchun to'lov qilishingiz kerak bo'ladi.\n\n"
-        f"💰 To'lov miqdori: {price} so'm\n"
-        f"💳 Karta raqam: {CARD_NUMBER}\n"
-        "🧾 Shu karta raqamga to'lov qilib chekini yuboring.\n"
-        "❌ Eslatib o'tamiz, cheksiz to'lov qabul qilinmaydi!",
+        f"рџ’° To'lov miqdori: {price} so'm\n"
+        f"рџ’і Karta raqam: {CARD_NUMBER}\n"
+        "рџ§ѕ Shu karta raqamga to'lov qilib chekini yuboring.\n"
+        "вќЊ Eslatib o'tamiz, cheksiz to'lov qabul qilinmaydi!",
         reply_markup=back_kb("back_ai_custom")
     )
     await state.set_state(VideoState.custom_payment)
@@ -1022,8 +1112,8 @@ async def ai_payment_any(msg: Message, state: FSMContext, photo_id=None, doc_id=
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="➕", callback_data=f"ok_video_{msg.from_user.id}_{status_msg.message_id}"),
-            InlineKeyboardButton(text="➖", callback_data=f"no_video_{msg.from_user.id}_{status_msg.message_id}"),
+            InlineKeyboardButton(text="вћ•", callback_data=f"ok_video_{msg.from_user.id}_{status_msg.message_id}"),
+            InlineKeyboardButton(text="вћ–", callback_data=f"no_video_{msg.from_user.id}_{status_msg.message_id}"),
         ]
     ])
 
@@ -1156,7 +1246,7 @@ async def back_ai_custom(call: CallbackQuery, state: FSMContext):
     )
     await call.answer()
 
-# ===================== ADMIN CALLBACK (➕/➖) =====================
+# ===================== ADMIN CALLBACK (вћ•/вћ–) =====================
 @dp.callback_query(F.data.startswith("ok_"))
 async def approve(call: CallbackQuery):
     parts = call.data.split("_")
@@ -1166,10 +1256,10 @@ async def approve(call: CallbackQuery):
 
     if kind == "slide":
         record_paid_order(user_id, "slide")
-        text = "✅  To'lovingiz qabul qilindi.\n📝 Slayd tayyorlashni boshladik.\n📂 Tayyor bo'lganda slayd faylini yuboraman."
+        text = "вњ…  To'lovingiz qabul qilindi.\nрџ“ќ Slayd tayyorlashni boshladik.\nрџ“‚ Tayyor bo'lganda slayd faylini yuboraman."
     else:
         record_paid_order(user_id, "video")
-        text = "✅  To'lovingiz qabul qilindi.\n🎬 Videoni tayyorlashni boshladik.\n📂 Tayyor bo'lganda video faylini yuboraman."
+        text = "вњ…  To'lovingiz qabul qilindi.\nрџЋ¬ Videoni tayyorlashni boshladik.\nрџ“‚ Tayyor bo'lganda video faylini yuboraman."
 
     await bot.edit_message_text(text, chat_id=user_id, message_id=status_message_id)
     await call.answer("Tasdiqlandi")
@@ -1185,7 +1275,7 @@ async def decline(call: CallbackQuery):
         [InlineKeyboardButton(text=" Adminga yozish", url=f"tg://user?id={ADMIN_ID}")]
     ])
     text = (
-        "❌  To'lov qabul qilinmadi.\n"
+        "вќЊ  To'lov qabul qilinmadi.\n"
         "Soxta chek yoki boshqa muammo yuz bergan bo'lishi mumkin (afsuski slayd tayyorlashni boshlay olmayman).\n\n"
         "Agar sizda shikoyat bo'lsa, adminga murojaat qilishingiz mumkin."
     )
@@ -1204,7 +1294,7 @@ async def admin_numbers(call: CallbackQuery, state: FSMContext):
         await call.message.delete()
     except Exception:
         pass
-    await call.message.answer("🔢 Raqamlar boshqaruvi", reply_markup=admin_numbers_kb())
+    await call.message.answer("рџ”ў Raqamlar boshqaruvi", reply_markup=admin_numbers_kb())
     await call.answer()
 
 @dp.callback_query(F.data == "admin_kino_numbers")
@@ -1218,7 +1308,7 @@ async def admin_kino_numbers(call: CallbackQuery, state: FSMContext):
         await call.message.delete()
     except Exception:
         pass
-    await call.message.answer("🎬 Kino raqamlar boshqaruvi", reply_markup=admin_kino_kb())
+    await call.message.answer("рџЋ¬ Kino raqamlar boshqaruvi", reply_markup=admin_kino_kb())
     await call.answer()
 
 @dp.callback_query(F.data == "admin_kino_add")
@@ -1233,7 +1323,7 @@ async def admin_kino_add(call: CallbackQuery, state: FSMContext):
         await call.message.delete()
     except Exception:
         pass
-    await call.message.answer("🎬 Yangi kino raqamini kiriting:", reply_markup=back_kb("admin_kino_menu"))
+    await call.message.answer("рџЋ¬ Yangi kino raqamini kiriting:", reply_markup=back_kb("admin_kino_menu"))
     await call.answer()
 
 @dp.callback_query(F.data == "admin_kino_menu")
@@ -1247,7 +1337,7 @@ async def admin_kino_menu(call: CallbackQuery, state: FSMContext):
         await call.message.delete()
     except Exception:
         pass
-    await call.message.answer("🎬 Kino raqamlar boshqaruvi", reply_markup=admin_kino_kb())
+    await call.message.answer("рџЋ¬ Kino raqamlar boshqaruvi", reply_markup=admin_kino_kb())
     await call.answer()
 
 @dp.callback_query(F.data == "admin_kino_delete")
@@ -1302,12 +1392,12 @@ async def admin_kino_add_message_any(msg: Message, state: FSMContext):
     await state.update_data(kino_pending=pending)
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="➖", callback_data=f"kino_del_{item_id}"),
-            InlineKeyboardButton(text="➕", callback_data="kino_add_more"),
-            InlineKeyboardButton(text="✅", callback_data="kino_add_done"),
+            InlineKeyboardButton(text="вћ–", callback_data=f"kino_del_{item_id}"),
+            InlineKeyboardButton(text="вћ•", callback_data="kino_add_more"),
+            InlineKeyboardButton(text="вњ…", callback_data="kino_add_done"),
         ]
     ])
-    await msg.answer("Habar qo‘shildi. Davom etasizmi?", reply_markup=kb)
+    await msg.answer("Habar qoвЂshildi. Davom etasizmi?", reply_markup=kb)
 
 @dp.message(KinoAdminState.del_number, F.text)
 async def admin_kino_delete_number(msg: Message, state: FSMContext):
@@ -1319,7 +1409,7 @@ async def admin_kino_delete_number(msg: Message, state: FSMContext):
         return
     num = int(msg.text)
     if delete_kino_number(num):
-        await msg.answer("✅ Kino raqami o'chirildi.", reply_markup=admin_kino_kb())
+        await msg.answer("вњ… Kino raqami o'chirildi.", reply_markup=admin_kino_kb())
         await state.clear()
     else:
         await msg.answer("Bunday raqam topilmadi. Qayta kiriting:", reply_markup=back_kb("admin_kino_menu"))
@@ -1346,7 +1436,7 @@ async def kino_add_done(call: CallbackQuery, state: FSMContext):
     payloads = [p["payload"] for p in pending]
     add_kino_number(int(number), payloads)
     await state.clear()
-    await call.message.answer("✅ Kino raqamiga habarlar biriktirildi.", reply_markup=admin_kino_kb())
+    await call.message.answer("вњ… Kino raqamiga habarlar biriktirildi.", reply_markup=admin_kino_kb())
     await call.answer()
 
 @dp.callback_query(F.data.startswith("kino_del_"))
@@ -1371,7 +1461,7 @@ async def kino_del_item(call: CallbackQuery, state: FSMContext):
         await call.message.delete()
     except Exception:
         pass
-    await call.answer("O‘chirildi")
+    await call.answer("OвЂchirildi")
 
 @dp.callback_query(F.data == "admin_users_export")
 async def admin_users_export(call: CallbackQuery, state: FSMContext):
@@ -1390,7 +1480,7 @@ async def admin_users_export(call: CallbackQuery, state: FSMContext):
     export_path.write_text(rtf_content, encoding="utf-8")
     await call.message.answer_document(
         FSInputFile(str(export_path)),
-        caption="🧾 Ro'yxatdan o'tgan userlar"
+        caption="рџ§ѕ Ro'yxatdan o'tgan userlar"
     )
     await call.answer()
 
@@ -1414,7 +1504,7 @@ async def admin_numbers_menu(call: CallbackQuery, state: FSMContext):
         await call.message.delete()
     except Exception:
         pass
-    await call.message.answer("🔢 Raqamlar boshqaruvi", reply_markup=admin_numbers_kb())
+    await call.message.answer("рџ”ў Raqamlar boshqaruvi", reply_markup=admin_numbers_kb())
     await call.answer()
 
 @dp.callback_query(F.data == "admin_numbers_add")
@@ -1429,7 +1519,7 @@ async def admin_numbers_add(call: CallbackQuery, state: FSMContext):
         await call.message.delete()
     except Exception:
         pass
-    await call.message.answer("➕ Yangi raqamni kiriting:", reply_markup=back_kb("admin_numbers_menu"))
+    await call.message.answer("вћ• Yangi raqamni kiriting:", reply_markup=back_kb("admin_numbers_menu"))
     await call.answer()
 
 @dp.message(BilimUlashAdminState.add_number, F.text)
@@ -1463,12 +1553,12 @@ async def admin_numbers_add_message_any(msg: Message, state: FSMContext):
     await state.update_data(bilim_pending=pending)
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="➖", callback_data=f"bilim_del_{item_id}"),
-            InlineKeyboardButton(text="➕", callback_data="bilim_add_more"),
-            InlineKeyboardButton(text="✅", callback_data="bilim_add_done"),
+            InlineKeyboardButton(text="вћ–", callback_data=f"bilim_del_{item_id}"),
+            InlineKeyboardButton(text="вћ•", callback_data="bilim_add_more"),
+            InlineKeyboardButton(text="вњ…", callback_data="bilim_add_done"),
         ]
     ])
-    await msg.answer("Habar qo‘shildi. Davom etasizmi?", reply_markup=kb)
+    await msg.answer("Habar qoвЂshildi. Davom etasizmi?", reply_markup=kb)
 
 @dp.callback_query(F.data == "admin_numbers_delete")
 async def admin_numbers_delete(call: CallbackQuery, state: FSMContext):
@@ -1513,7 +1603,7 @@ async def bilim_add_done(call: CallbackQuery, state: FSMContext):
     payloads = [p["payload"] for p in pending]
     add_bilim_number(int(number), payloads)
     await state.clear()
-    await call.message.answer("✅ Raqamga habarlar biriktirildi.", reply_markup=admin_numbers_kb())
+    await call.message.answer("вњ… Raqamga habarlar biriktirildi.", reply_markup=admin_numbers_kb())
     await call.answer()
 
 @dp.callback_query(F.data.startswith("bilim_del_"))
@@ -1538,7 +1628,7 @@ async def bilim_del_item(call: CallbackQuery, state: FSMContext):
         await call.message.delete()
     except Exception:
         pass
-    await call.answer("O‘chirildi")
+    await call.answer("OвЂchirildi")
 
 @dp.message(BilimUlashAdminState.del_number, F.text)
 async def admin_numbers_delete_number(msg: Message, state: FSMContext):
@@ -1566,7 +1656,7 @@ async def admin_back_main(call: CallbackQuery, state: FSMContext):
         await call.message.delete()
     except Exception:
         pass
-    await call.message.answer("Xizmatni tanlang 👇", reply_markup=menu_kb(is_admin=True))
+    await call.message.answer("Xizmatni tanlang рџ‘‡", reply_markup=menu_kb(is_admin=True))
     await call.answer()
 
 @dp.callback_query(F.data == "admin_order_ready")
@@ -1574,12 +1664,13 @@ async def admin_order_ready(call: CallbackQuery, state: FSMContext):
     if call.from_user.id != ADMIN_ID:
         await call.answer()
         return
+    await state.update_data(ready_payloads=[])
     await state.set_state(AdminSendState.file)
     try:
         await call.message.delete()
     except Exception:
         pass
-    await call.message.answer("📦 Faylni yuboring (video, foto, hujjat):", reply_markup=back_kb("admin_back_send"))
+    await call.message.answer("рџ“¦ Faylni yuboring (video, foto, hujjat):", reply_markup=back_kb("admin_back_send"))
     await call.answer()
 
 @dp.callback_query(F.data == "admin_back_send")
@@ -1593,7 +1684,7 @@ async def admin_back_from_file(call: CallbackQuery, state: FSMContext):
         await call.message.delete()
     except Exception:
         pass
-    await call.message.answer("⚙️ Admin panel", reply_markup=admin_panel_kb())
+    await call.message.answer("вљ™пёЏ Admin panel", reply_markup=admin_panel_kb())
     await call.answer()
 
 @dp.callback_query(F.data == "admin_back_file")
@@ -1602,13 +1693,13 @@ async def admin_back_from_number(call: CallbackQuery, state: FSMContext):
     if call.from_user.id != ADMIN_ID:
         await call.answer()
         return
-    await state.update_data(file_id=None, file_type=None)
+    await state.update_data(file_id=None, file_type=None, ready_payloads=[])
     await state.set_state(AdminSendState.file)
     try:
         await call.message.delete()
     except Exception:
         pass
-    await call.message.answer("📦 Faylni yuboring (video, foto, hujjat):", reply_markup=back_kb("admin_back_send"))
+    await call.message.answer("рџ“¦ Faylni yuboring (video, foto, hujjat):", reply_markup=back_kb("admin_back_send"))
     await call.answer()
 
 @dp.callback_query(F.data == "admin_back_comment")
@@ -1629,23 +1720,107 @@ async def admin_back_from_comment(call: CallbackQuery, state: FSMContext):
 @dp.message(AdminSendState.file, F.photo)
 async def admin_send_file_photo(msg: Message, state: FSMContext):
     await record_last_user_message(msg, state)
-    await state.update_data(file_id=msg.photo[-1].file_id, file_type="photo")
-    await msg.answer("📋 User tartib raqamini yuboring:", reply_markup=back_kb("admin_back_file"))
-    await state.set_state(AdminSendState.user_number)
+    payload = {"type": "photo", "file_id": msg.photo[-1].file_id, "caption": msg.caption or ""}
+    data = await state.get_data()
+    pending = data.get("ready_payloads", [])
+    item_id = f"r{msg.message_id}"
+    pending.append({"id": item_id, "payload": payload, "msg_id": msg.message_id})
+    await state.update_data(ready_payloads=pending)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="➖", callback_data=f"ready_del_{item_id}"),
+            InlineKeyboardButton(text="➕", callback_data="ready_add_more"),
+            InlineKeyboardButton(text="✅", callback_data="ready_done"),
+        ]
+    ])
+    await msg.answer("Fayl qo'shildi. Davom etasizmi?", reply_markup=kb)
 
 @dp.message(AdminSendState.file, F.video)
 async def admin_send_file_video(msg: Message, state: FSMContext):
     await record_last_user_message(msg, state)
-    await state.update_data(file_id=msg.video.file_id, file_type="video")
-    await msg.answer("📋 User tartib raqamini yuboring:", reply_markup=back_kb("admin_back_file"))
-    await state.set_state(AdminSendState.user_number)
+    payload = {"type": "video", "file_id": msg.video.file_id, "caption": msg.caption or ""}
+    data = await state.get_data()
+    pending = data.get("ready_payloads", [])
+    item_id = f"r{msg.message_id}"
+    pending.append({"id": item_id, "payload": payload, "msg_id": msg.message_id})
+    await state.update_data(ready_payloads=pending)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="➖", callback_data=f"ready_del_{item_id}"),
+            InlineKeyboardButton(text="➕", callback_data="ready_add_more"),
+            InlineKeyboardButton(text="✅", callback_data="ready_done"),
+        ]
+    ])
+    await msg.answer("Fayl qo'shildi. Davom etasizmi?", reply_markup=kb)
 
 @dp.message(AdminSendState.file, F.document)
 async def admin_send_file_document(msg: Message, state: FSMContext):
     await record_last_user_message(msg, state)
-    await state.update_data(file_id=msg.document.file_id, file_type="document")
-    await msg.answer("📋 User tartib raqamini yuboring:", reply_markup=back_kb("admin_back_file"))
+    payload = {"type": "document", "file_id": msg.document.file_id, "caption": msg.caption or ""}
+    data = await state.get_data()
+    pending = data.get("ready_payloads", [])
+    item_id = f"r{msg.message_id}"
+    pending.append({"id": item_id, "payload": payload, "msg_id": msg.message_id})
+    await state.update_data(ready_payloads=pending)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="➖", callback_data=f"ready_del_{item_id}"),
+            InlineKeyboardButton(text="➕", callback_data="ready_add_more"),
+            InlineKeyboardButton(text="✅", callback_data="ready_done"),
+        ]
+    ])
+    await msg.answer("Fayl qo'shildi. Davom etasizmi?", reply_markup=kb)
+
+@dp.message(AdminSendState.file)
+async def admin_send_file_other(msg: Message, state: FSMContext):
+    await record_last_user_message(msg, state)
+    await msg.answer("Iltimos, video, rasm yoki hujjat yuboring.", reply_markup=back_kb("admin_back_send"))
+
+@dp.callback_query(F.data == "ready_add_more")
+async def ready_add_more(call: CallbackQuery, state: FSMContext):
+    if call.from_user.id != ADMIN_ID:
+        await call.answer()
+        return
+    await call.answer("Yana fayl yuboring.")
+
+@dp.callback_query(F.data == "ready_done")
+async def ready_done(call: CallbackQuery, state: FSMContext):
+    if call.from_user.id != ADMIN_ID:
+        await call.answer()
+        return
+    data = await state.get_data()
+    pending = data.get("ready_payloads", [])
+    if not pending:
+        await call.answer()
+        await call.message.answer("Fayl topilmadi. Avval fayl yuboring.")
+        return
     await state.set_state(AdminSendState.user_number)
+    await call.message.answer("📋 User tartib raqamini yuboring:", reply_markup=back_kb("admin_back_file"))
+    await call.answer()
+
+@dp.callback_query(F.data.startswith("ready_del_"))
+async def ready_del_item(call: CallbackQuery, state: FSMContext):
+    if call.from_user.id != ADMIN_ID:
+        await call.answer()
+        return
+    item_id = call.data.replace("ready_del_", "")
+    data = await state.get_data()
+    pending = data.get("ready_payloads", [])
+    new_pending = []
+    msg_id = None
+    for item in pending:
+        if item.get("id") == item_id:
+            msg_id = item.get("msg_id")
+            continue
+        new_pending.append(item)
+    await state.update_data(ready_payloads=new_pending)
+    try:
+        if msg_id:
+            await bot.delete_message(call.from_user.id, msg_id)
+        await call.message.delete()
+    except Exception:
+        pass
+    await call.answer("O'chirildi")
 
 @dp.message(AdminSendState.user_number, F.text)
 async def admin_send_user_number(msg: Message, state: FSMContext):
@@ -1659,28 +1834,24 @@ async def admin_send_user_number(msg: Message, state: FSMContext):
         await msg.answer("Bunday tartib raqamli user topilmadi. Qayta kiriting:", reply_markup=back_kb("admin_back_file"))
         return
     await state.update_data(user_number=num, target_user_id=user_id)
-    await msg.answer("✍️ Userga izoh yozing (masalan: Buyurtma sizga yoqdimi):", reply_markup=back_kb("admin_back_comment"))
+    await msg.answer("вњЌпёЏ Userga izoh yozing (masalan: Buyurtma sizga yoqdimi):", reply_markup=back_kb("admin_back_comment"))
     await state.set_state(AdminSendState.comment)
 
 @dp.message(AdminSendState.comment, F.text)
 async def admin_send_comment(msg: Message, state: FSMContext):
     await record_last_user_message(msg, state)
     data = await state.get_data()
-    file_id = data["file_id"]
-    file_type = data["file_type"]
     target_user_id = data["target_user_id"]
     comment = msg.text
+    pending = data.get("ready_payloads", [])
 
     caption = f"✅ Buyurtmangiz tayyor!\n\n💬 Izoh: {comment}"
 
     try:
-        if file_type == "photo":
-            await bot.send_photo(target_user_id, file_id, caption=caption)
-        elif file_type == "video":
-            await bot.send_video(target_user_id, file_id, caption=caption)
-        else:
-            await bot.send_document(target_user_id, file_id, caption=caption)
-        await msg.answer("✅ Fayl userga yuborildi.", reply_markup=menu_kb(is_admin=True))
+        await bot.send_message(target_user_id, caption)
+        for item in pending:
+            await send_payload_to_chat(target_user_id, item.get("payload"), with_caption=True)
+        await msg.answer("✅ Fayllar userga yuborildi.", reply_markup=menu_kb(is_admin=True))
     except Exception as e:
         await msg.answer(f"❌ Xatolik: {e}", reply_markup=menu_kb(is_admin=True))
     await state.clear()
