@@ -49,6 +49,14 @@ dp = Dispatcher()
 priority_router = Router()
 reg_router = Router()  # ro'yxat orqaga qaytish — birinchi tekshiriladi
 
+UI_IMAGE_MAP = {
+    "books_number_prompt": BASE_DIR / "1.png",
+    "main_menu": BASE_DIR / "2.png",
+    "slide_topic": BASE_DIR / "3.png",
+    "ai_video": BASE_DIR / "4.png",
+    "bot_create": BASE_DIR / "5.png",
+}
+
 async def record_last_user_message(msg: Message, state: FSMContext):
     await state.update_data(last_user_chat_id=msg.chat.id, last_user_msg_id=msg.message_id)
 
@@ -62,6 +70,19 @@ async def delete_last_user_message(state: FSMContext):
         except Exception:
             pass
     await state.update_data(last_user_chat_id=None, last_user_msg_id=None)
+
+async def answer_with_image(message: Message, image_path: Path, caption: str, reply_markup=None, parse_mode=None):
+    if image_path.exists():
+        try:
+            return await message.answer_photo(
+                photo=FSInputFile(str(image_path)),
+                caption=caption,
+                reply_markup=reply_markup,
+                parse_mode=parse_mode,
+            )
+        except Exception:
+            pass
+    return await message.answer(caption, reply_markup=reply_markup, parse_mode=parse_mode)
 
 class ThrottleMiddleware(BaseMiddleware):
     def __init__(self, min_interval: float = 0.7, warn_interval: float = 2.0):
@@ -850,7 +871,12 @@ async def start(msg: Message, state: FSMContext):
     await state.clear()
     # Agar allaqachon ro'yxatdan o'tgan bo'lsa - menyu
     if is_registered(msg.from_user.id):
-        await msg.answer("Xizmatni tanlang 👇", reply_markup=menu_kb(msg.from_user.id == ADMIN_ID))
+        await answer_with_image(
+            msg,
+            UI_IMAGE_MAP["main_menu"],
+            "Xizmatni tanlang 👇",
+            reply_markup=menu_kb(msg.from_user.id == ADMIN_ID),
+        )
         return
     # Banner (bot nima qiladi)
     await msg.answer(BANNER, parse_mode="Markdown")
@@ -1034,7 +1060,12 @@ async def bilim_ulash_send(msg: Message, state: FSMContext):
             await send_payload(msg, item)
     else:
         await send_payload(msg, content)
-    await msg.answer("Xizmatni tanlang 👇", reply_markup=menu_kb(msg.from_user.id == ADMIN_ID))
+    await answer_with_image(
+        msg,
+        UI_IMAGE_MAP["main_menu"],
+        "Xizmatni tanlang 👇",
+        reply_markup=menu_kb(msg.from_user.id == ADMIN_ID),
+    )
     await state.clear()
 
 # ===================== KINO KODLARI ==================
@@ -1064,7 +1095,12 @@ async def kino_send(msg: Message, state: FSMContext):
             await send_payload(msg, item)
     else:
         await send_payload(msg, content)
-    await msg.answer("Xizmatni tanlang 👇", reply_markup=menu_kb(msg.from_user.id == ADMIN_ID))
+    await answer_with_image(
+        msg,
+        UI_IMAGE_MAP["main_menu"],
+        "Xizmatni tanlang 👇",
+        reply_markup=menu_kb(msg.from_user.id == ADMIN_ID),
+    )
     await state.clear()
 
 @dp.callback_query(F.data == "back_kino_menu")
@@ -1075,7 +1111,12 @@ async def back_kino_menu(call: CallbackQuery, state: FSMContext):
         await call.message.delete()
     except Exception:
         pass
-    await call.message.answer("Xizmatni tanlang 👇", reply_markup=menu_kb(call.from_user.id == ADMIN_ID))
+    await answer_with_image(
+        call.message,
+        UI_IMAGE_MAP["main_menu"],
+        "Xizmatni tanlang 👇",
+        reply_markup=menu_kb(call.from_user.id == ADMIN_ID),
+    )
     await call.answer()
 
 @dp.callback_query(F.data == "back_bilim_menu")
@@ -1086,7 +1127,12 @@ async def back_bilim_menu(call: CallbackQuery, state: FSMContext):
         await call.message.delete()
     except Exception:
         pass
-    await call.message.answer("Xizmatni tanlang 👇", reply_markup=menu_kb(call.from_user.id == ADMIN_ID))
+    await answer_with_image(
+        call.message,
+        UI_IMAGE_MAP["main_menu"],
+        "Xizmatni tanlang 👇",
+        reply_markup=menu_kb(call.from_user.id == ADMIN_ID),
+    )
     await call.answer()
 
 # ===================== KITOBLAR ==================
@@ -1107,7 +1153,12 @@ async def books_back_main(call: CallbackQuery, state: FSMContext):
         await call.message.delete()
     except Exception:
         pass
-    await call.message.answer("Xizmatni tanlang 👇", reply_markup=menu_kb(call.from_user.id == ADMIN_ID))
+    await answer_with_image(
+        call.message,
+        UI_IMAGE_MAP["main_menu"],
+        "Xizmatni tanlang 👇",
+        reply_markup=menu_kb(call.from_user.id == ADMIN_ID),
+    )
     await call.answer()
 
 @dp.callback_query(F.data == "books_back_user_home")
@@ -1157,9 +1208,11 @@ async def books_user_number(call: CallbackQuery, state: FSMContext):
         await call.message.delete()
     except Exception:
         pass
-    await call.message.answer(
+    await answer_with_image(
+        call.message,
+        UI_IMAGE_MAP["books_number_prompt"],
         "🔢 Raqamli kitob raqamini yuboring:",
-        reply_markup=back_kb("books_back_user_home")
+        reply_markup=back_kb("books_back_user_home"),
     )
     await call.answer()
 
@@ -1256,7 +1309,12 @@ async def slide_start(msg: Message, state: FSMContext):
     if not is_registered(msg.from_user.id):
         await msg.answer("🔒 Avval ro'yxatdan o'ting. /start bosing.", reply_markup=sub_kb())
         return
-    await msg.answer("📌  Slayd mavzusini yozing:", reply_markup=back_kb("back_to_menu"))
+    await answer_with_image(
+        msg,
+        UI_IMAGE_MAP["slide_topic"],
+        "📌  Slayd mavzusini yozing:",
+        reply_markup=back_kb("back_to_menu"),
+    )
     await state.set_state(SlideState.topic)
 
 @dp.message(SlideState.topic)
@@ -1397,7 +1455,12 @@ async def back_slide_handlers(call: CallbackQuery, state: FSMContext):
             await call.message.delete()
         except Exception:
             pass
-        await call.message.answer("📌  Slayd mavzusini yozing:", reply_markup=back_kb("back_to_menu"))
+        await answer_with_image(
+            call.message,
+            UI_IMAGE_MAP["slide_topic"],
+            "📌  Slayd mavzusini yozing:",
+            reply_markup=back_kb("back_to_menu"),
+        )
     
     elif data == "back_slide_pages":
         await state.set_state(SlideState.pages)
@@ -1448,7 +1511,12 @@ async def back_to_main_menu(call: CallbackQuery, state: FSMContext):
         await call.message.delete()
     except Exception:
         pass
-    await call.message.answer("Xizmatni tanlang 👇", reply_markup=menu_kb(call.from_user.id == ADMIN_ID))
+    await answer_with_image(
+        call.message,
+        UI_IMAGE_MAP["main_menu"],
+        "Xizmatni tanlang 👇",
+        reply_markup=menu_kb(call.from_user.id == ADMIN_ID),
+    )
 
 # ===================== ADMIN CONTACT =====================
 @priority_router.message(F.text.contains("Admin bilan bog'lanish") | F.text.contains("Admin bilan boglanish"))
@@ -1469,9 +1537,11 @@ async def bot_create_contact(msg: Message, state: FSMContext):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=" Adminga yozish", url=f"tg://user?id={ADMIN_ID}")]
     ])
-    await msg.answer(
-        " Bot yaratish bo'yicha adminga yozing.",
-        reply_markup=kb
+    await answer_with_image(
+        msg,
+        UI_IMAGE_MAP["bot_create"],
+        "Bot yaratish bo'yicha adminga yozing.",
+        reply_markup=kb,
     )
 
 
@@ -1490,10 +1560,11 @@ async def ai_video(msg: Message, state: FSMContext):
         [InlineKeyboardButton(text="🎬 Men hohlagan video", callback_data="ai_custom_video")],
     ])
     await state.set_state(VideoState.menu)
-    await msg.answer(
-        "🎬 AI video xizmati.\n📌 Max 10 soniya.\n\n"
-        "👇 Xizmat turini tanlang:",
-        reply_markup=kb
+    await answer_with_image(
+        msg,
+        UI_IMAGE_MAP["ai_video"],
+        "🎬 AI video xizmati.\n📌 Max 10 soniya.\n\n👇 Xizmat turini tanlang:",
+        reply_markup=kb,
     )
 
 @dp.callback_query(F.data == "ai_img_to_video")
@@ -2811,7 +2882,12 @@ async def admin_back_main(call: CallbackQuery, state: FSMContext):
         await call.message.delete()
     except Exception:
         pass
-    await call.message.answer("Xizmatni tanlang 👇", reply_markup=menu_kb(is_admin=True))
+    await answer_with_image(
+        call.message,
+        UI_IMAGE_MAP["main_menu"],
+        "Xizmatni tanlang 👇",
+        reply_markup=menu_kb(is_admin=True),
+    )
     await call.answer()
 
 @dp.callback_query(F.data == "admin_order_ready")
