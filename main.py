@@ -141,17 +141,12 @@ BOOK_CATEGORY_EMOJI: dict[str, str] = {
 def default_books_data() -> dict:
     online = {name: [] for name in BOOK_CATEGORY_TOPICS.keys()}
     audio = {name: [] for name in BOOK_CATEGORY_TOPICS.keys()}
-    return {"next_number": 1, "online": online, "audio": audio}
+    return {"online": online, "audio": audio, "numbered": {}}
 
 def normalize_books_data(raw) -> dict:
     data = default_books_data()
     if not isinstance(raw, dict):
         return data
-
-    max_number = 0
-    next_number = raw.get("next_number", 1)
-    if isinstance(next_number, int) and next_number > 0:
-        data["next_number"] = next_number
 
     for section in ("online", "audio"):
         section_raw = raw.get(section)
@@ -160,15 +155,40 @@ def normalize_books_data(raw) -> dict:
         for cat_name, items in section_raw.items():
             if not isinstance(items, list):
                 continue
-            data[section][str(cat_name)] = items
-            for item in items:
-                if isinstance(item, dict):
-                    number = item.get("number")
-                    if isinstance(number, int) and number > max_number:
-                        max_number = number
+            data[section][str(cat_name)] = [i for i in items if isinstance(i, dict)]
 
-    if data["next_number"] <= max_number:
-        data["next_number"] = max_number + 1
+    numbered_raw = raw.get("numbered")
+    if isinstance(numbered_raw, dict):
+        cleaned = {}
+        for k, v in numbered_raw.items():
+            try:
+                int(k)
+            except Exception:
+                continue
+            if isinstance(v, dict):
+                cleaned[str(k)] = v
+        data["numbered"] = cleaned
+
+    # Legacy: eski modelda kategoriya ichida number bilan saqlangan kitoblar bo'lsa
+    # raqamli xaritaga ko'chirib qo'yamiz.
+    for section in ("online", "audio"):
+        for cat_name, items in list(data[section].items()):
+            kept = []
+            for item in items:
+                number = item.get("number")
+                if isinstance(number, int) and number > 0:
+                    nkey = str(number)
+                    if nkey not in data["numbered"]:
+                        migrated = dict(item)
+                        migrated["section"] = section
+                        migrated["category"] = cat_name
+                        data["numbered"][nkey] = migrated
+                    migrated_item = dict(item)
+                    migrated_item.pop("number", None)
+                    kept.append(migrated_item)
+                else:
+                    kept.append(item)
+            data[section][cat_name] = kept
     return data
 
 # ===================== USER STORAGE =====================
@@ -327,25 +347,20 @@ def get_book_category_by_index(section: str, idx: int) -> str | None:
         return None
     return cats[idx]
 
-def add_book_item(section: str, category: str, cover_payload, info_text: str, file_payload) -> int:
+def add_book_item(section: str, category: str, cover_payload, info_text: str, file_payload) -> None:
     data = load_users()
     books = normalize_books_data(data.get("books"))
     section_data = books.setdefault(section, {})
     items = section_data.setdefault(category, [])
-
-    number = int(books.get("next_number", 1))
     book_item = {
-        "number": number,
         "cover": cover_payload,
         "info": info_text,
         "file": file_payload,
         "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
     items.append(book_item)
-    books["next_number"] = number + 1
     data["books"] = books
     save_users(data)
-    return number
 
 def list_books_in_category(section: str, category: str) -> list[dict]:
     data = load_users()
@@ -354,40 +369,74 @@ def list_books_in_category(section: str, category: str) -> list[dict]:
     items = section_data.get(category, []) if isinstance(section_data, dict) else []
     if not isinstance(items, list):
         return []
-    return sorted([i for i in items if isinstance(i, dict)], key=lambda x: int(x.get("number", 0)))
+    return [i for i in items if isinstance(i, dict)]
 
 def find_book_by_number(number: int):
     data = load_users()
     books = normalize_books_data(data.get("books"))
-    for section in ("online", "audio"):
-        section_data = books.get(section, {})
-        if not isinstance(section_data, dict):
-            continue
-        for category, items in section_data.items():
-            if not isinstance(items, list):
-                continue
-            for item in items:
-                if isinstance(item, dict) and int(item.get("number", -1)) == number:
-                    return section, category, item
+    item = books.get("numbered", {}).get(str(number))
+    if isinstance(item, dict):
+        return item
     return None
 
-def delete_book_by_number(section: str, number: int) -> bool:
+def add_numbered_book(number: int, cover_payload, info_text: str, file_payload, section: str | None = None, category: str | None = None):
+    data = load_users()
+    books = normalize_books_data(data.get("books"))
+    item = {
+        "cover": cover_payload,
+        "info": info_text,
+        "file": file_payload,
+        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    if section:
+        item["section"] = section
+    if category:
+        item["category"] = category
+    books.setdefault("numbered", {})[str(number)] = item
+    data["books"] = books
+    save_users(data)
+
+def list_numbered_books() -> list[tuple[int, dict]]:
+    data = load_users()
+    books = normalize_books_data(data.get("books"))
+    out = []
+    for k, v in books.get("numbered", {}).items():
+        try:
+            num = int(k)
+        except Exception:
+            continue
+        if isinstance(v, dict):
+            out.append((num, v))
+    return sorted(out, key=lambda x: x[0])
+
+def delete_numbered_book(number: int) -> bool:
+    data = load_users()
+    books = normalize_books_data(data.get("books"))
+    key = str(number)
+    if key in books.get("numbered", {}):
+        del books["numbered"][key]
+        data["books"] = books
+        save_users(data)
+        return True
+    return False
+
+def delete_book_by_index(section: str, category: str, idx: int) -> bool:
     data = load_users()
     books = normalize_books_data(data.get("books"))
     section_data = books.get(section, {})
     if not isinstance(section_data, dict):
         return False
-    for category, items in section_data.items():
-        if not isinstance(items, list):
-            continue
-        new_items = [i for i in items if not (isinstance(i, dict) and int(i.get("number", -1)) == number)]
-        if len(new_items) != len(items):
-            section_data[category] = new_items
-            books[section] = section_data
-            data["books"] = books
-            save_users(data)
-            return True
-    return False
+    items = section_data.get(category, [])
+    if not isinstance(items, list):
+        return False
+    if idx < 0 or idx >= len(items):
+        return False
+    del items[idx]
+    section_data[category] = items
+    books[section] = section_data
+    data["books"] = books
+    save_users(data)
+    return True
 
 def summarize_payload(payload) -> str:
     if isinstance(payload, dict):
@@ -617,6 +666,12 @@ class BookAdminState(StatesGroup):
     add_book_info = State()
     add_book_file = State()
     add_book_confirm = State()
+    num_cover = State()
+    num_info = State()
+    num_file = State()
+    num_number = State()
+    num_confirm = State()
+    num_delete_number = State()
 
 # ===================== KEYBOARDS =====================
 def menu_kb(is_admin: bool = False):
@@ -686,6 +741,7 @@ def books_user_categories_kb(section: str):
 def admin_books_menu_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📂 Barchasi", callback_data="admin_books_all")],
+        [InlineKeyboardButton(text="🔢 Raqamli kitob", callback_data="admin_books_numbered_menu")],
         [InlineKeyboardButton(text="➕ Kitob qo'shish", callback_data="admin_books_add_book")],
         [InlineKeyboardButton(text="➕ Yo'nalish qo'shish", callback_data="admin_books_add_direction")],
         [InlineKeyboardButton(text="⬅️ Orqaga qaytish", callback_data="admin_back_main")],
@@ -735,9 +791,12 @@ def _payload_to_input_media(payload: dict, caption: str | None = None):
     return None
 
 async def send_book_item_block(chat_id: int, book_item: dict, preview: bool = False):
-    number = book_item.get("number", "-")
+    number = book_item.get("lookup_number")
     info = (book_item.get("info") or "").strip()
-    prefix = "📚 Yangi kitob preview" if preview else f"📚 Kitob #{number}"
+    if preview:
+        prefix = "📚 Yangi kitob preview"
+    else:
+        prefix = f"📚 Kitob #{number}" if number else "📚 Kitob"
     caption = f"{prefix}\n\n{info}" if info else prefix
     cover = book_item.get("cover")
     file_payload = book_item.get("file")
@@ -1082,7 +1141,7 @@ async def books_user_number(call: CallbackQuery, state: FSMContext):
     except Exception:
         pass
     await call.message.answer(
-        "🔢 Kitob raqamini yuboring:",
+        "🔢 Raqamli kitob raqamini yuboring:",
         reply_markup=back_kb("books_back_user_home")
     )
     await call.answer()
@@ -1148,14 +1207,20 @@ async def books_number_lookup(msg: Message, state: FSMContext):
         return
 
     number = int(value)
-    found = find_book_by_number(number)
-    if not found:
+    book_item = find_book_by_number(number)
+    if not book_item:
         await msg.answer("Bu raqam bo'yicha kitob topilmadi. Qayta kiriting:", reply_markup=back_kb("books_back_user_home"))
         return
 
-    section, category, book_item = found
-    await msg.answer(f"✅ Topildi: {section_title(section)} / {category_title(category)}")
-    await send_book_item_block(msg.chat.id, book_item)
+    section = book_item.get("section")
+    category = book_item.get("category")
+    if section and category:
+        await msg.answer(f"✅ Topildi: {section_title(section)} / {category_title(category)}")
+    else:
+        await msg.answer("✅ Topildi.")
+    display_item = dict(book_item)
+    display_item["lookup_number"] = number
+    await send_book_item_block(msg.chat.id, display_item)
 
     await msg.answer(
         "Yana kitob raqamini yuborishingiz mumkin.",
@@ -2046,6 +2111,8 @@ async def admin_books_all(call: CallbackQuery, state: FSMContext):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📚 Online Kitoblar", callback_data="admin_books_view_section_online")],
         [InlineKeyboardButton(text="🎧 Audio kitoblar", callback_data="admin_books_view_section_audio")],
+        [InlineKeyboardButton(text="🔢 Raqamli kitoblar ro'yxati", callback_data="admin_books_num_list")],
+        [InlineKeyboardButton(text="🗑️ Raqamli kitobni o'chirish", callback_data="admin_books_num_delete_start")],
         [InlineKeyboardButton(text="➕ Kitob qo'shish", callback_data="admin_books_add_book")],
         [InlineKeyboardButton(text="➕ Yo'nalish qo'shish", callback_data="admin_books_add_direction")],
         [InlineKeyboardButton(text="⬅️ Orqaga qaytish", callback_data="admin_books_menu")],
@@ -2098,15 +2165,14 @@ async def admin_books_view_category(call: CallbackQuery, state: FSMContext):
 
     books = list_books_in_category(section, category)
     if books:
-        lines = [f"{b.get('number', '-')} - {book_short_title(b)}" for b in books]
+        lines = [f"{idx + 1} - {book_short_title(b)}" for idx, b in enumerate(books)]
         text = f"{section_title(section)}\n{category_title(category)}\n\n" + "\n".join(lines)
     else:
         text = f"{section_title(section)}\n{category_title(category)}\n\n(hozircha bo'sh)"
 
     rows = []
-    for b in books:
-        num = int(b.get("number", 0))
-        rows.append([InlineKeyboardButton(text=f"🗑️ {num} ni o'chirish", callback_data=f"admin_books_del_{section}_{num}_{cat_idx}")])
+    for idx, _ in enumerate(books):
+        rows.append([InlineKeyboardButton(text=f"🗑️ {idx + 1}-kitobni o'chirish", callback_data=f"admin_books_del_{section}_{cat_idx}_{idx}")])
     rows.append([InlineKeyboardButton(text="⬅️ Orqaga qaytish", callback_data=f"admin_books_view_section_{section}")])
     rows.append([InlineKeyboardButton(text="🏠 Kitoblar menyusi", callback_data="admin_books_menu")])
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
@@ -2129,29 +2195,30 @@ async def admin_books_delete(call: CallbackQuery, state: FSMContext):
         return
     section = parts[3]
     try:
-        number = int(parts[4])
-        cat_idx = int(parts[5])
+        cat_idx = int(parts[4])
+        item_idx = int(parts[5])
     except ValueError:
         await call.answer()
         return
-    ok = delete_book_by_number(section, number)
+    category = get_book_category_by_index(section, cat_idx)
+    if not category:
+        await call.answer()
+        return
+    ok = delete_book_by_index(section, category, item_idx)
     if ok:
         await call.answer("Kitob o'chirildi.")
     else:
         await call.answer("Kitob topilmadi.", show_alert=True)
-    category = get_book_category_by_index(section, cat_idx)
-    if not category:
-        return
+
     books = list_books_in_category(section, category)
     if books:
-        lines = [f"{b.get('number', '-')} - {book_short_title(b)}" for b in books]
+        lines = [f"{idx + 1} - {book_short_title(b)}" for idx, b in enumerate(books)]
         text = f"{section_title(section)}\n{category_title(category)}\n\n" + "\n".join(lines)
     else:
         text = f"{section_title(section)}\n{category_title(category)}\n\n(hozircha bo'sh)"
     rows = []
-    for b in books:
-        num = int(b.get("number", 0))
-        rows.append([InlineKeyboardButton(text=f"🗑️ {num} ni o'chirish", callback_data=f"admin_books_del_{section}_{num}_{cat_idx}")])
+    for idx, _ in enumerate(books):
+        rows.append([InlineKeyboardButton(text=f"🗑️ {idx + 1}-kitobni o'chirish", callback_data=f"admin_books_del_{section}_{cat_idx}_{idx}")])
     rows.append([InlineKeyboardButton(text="⬅️ Orqaga qaytish", callback_data=f"admin_books_view_section_{section}")])
     rows.append([InlineKeyboardButton(text="🏠 Kitoblar menyusi", callback_data="admin_books_menu")])
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
@@ -2190,6 +2257,210 @@ async def admin_books_add_direction_submit(msg: Message, state: FSMContext):
     add_book_direction(direction_name)
     await state.clear()
     await msg.answer(f"✅ Yo'nalish qo'shildi: {direction_name}", reply_markup=admin_books_menu_kb())
+
+@dp.callback_query(F.data == "admin_books_num_list")
+async def admin_books_num_list(call: CallbackQuery, state: FSMContext):
+    await delete_last_user_message(state)
+    if call.from_user.id != ADMIN_ID:
+        await call.answer()
+        return
+    await state.clear()
+    items = list_numbered_books()
+    if items:
+        lines = [f"{n} - {book_short_title(item)}" for n, item in items]
+        text = "🔢 Raqamli kitoblar ro'yxati:\n\n" + "\n".join(lines)
+    else:
+        text = "🔢 Hozircha raqamli kitob yo'q."
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅️ Orqaga qaytish", callback_data="admin_books_all")]
+    ])
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
+    await call.message.answer(text, reply_markup=kb)
+    await call.answer()
+
+@dp.callback_query(F.data == "admin_books_num_delete_start")
+async def admin_books_num_delete_start(call: CallbackQuery, state: FSMContext):
+    await delete_last_user_message(state)
+    if call.from_user.id != ADMIN_ID:
+        await call.answer()
+        return
+    await state.clear()
+    items = list_numbered_books()
+    if items:
+        lines = [f"{n} - {book_short_title(item)}" for n, item in items]
+        text = "🗑️ O'chirish uchun mavjud raqamli kitoblar:\n\n" + "\n".join(lines)
+    else:
+        text = "🔢 Hozircha raqamli kitob yo'q."
+    await state.set_state(BookAdminState.num_delete_number)
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
+    await call.message.answer(
+        text + "\n\nO'chirish uchun raqamni yuboring:",
+        reply_markup=back_kb("admin_books_all")
+    )
+    await call.answer()
+
+@dp.message(BookAdminState.num_delete_number)
+async def admin_books_num_delete_number(msg: Message, state: FSMContext):
+    await record_last_user_message(msg, state)
+    if msg.from_user.id != ADMIN_ID:
+        return
+    value = (msg.text or "").strip()
+    if not value.isdigit():
+        await msg.answer("Raqamni to'g'ri kiriting (faqat son).", reply_markup=back_kb("admin_books_all"))
+        return
+    number = int(value)
+    if delete_numbered_book(number):
+        await msg.answer(f"✅ {number} raqamli kitob o'chirildi.", reply_markup=admin_books_menu_kb())
+        await state.clear()
+        return
+    await msg.answer("❌ Bu raqam bo'yicha kitob topilmadi. Qayta kiriting:", reply_markup=back_kb("admin_books_all"))
+
+@dp.callback_query(F.data == "admin_books_numbered_menu")
+async def admin_books_numbered_menu(call: CallbackQuery, state: FSMContext):
+    await delete_last_user_message(state)
+    if call.from_user.id != ADMIN_ID:
+        await call.answer()
+        return
+    await state.clear()
+    await state.update_data(num_preview_ids=[])
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
+
+    numbered = list_numbered_books()
+    if numbered:
+        lines = [f"{num} - {book_short_title(item)}" for num, item in numbered]
+        await call.message.answer("🔢 Mavjud raqamli kitoblar:\n" + "\n".join(lines))
+    else:
+        await call.message.answer("🔢 Hozircha raqamli kitoblar yo'q.")
+
+    await state.set_state(BookAdminState.num_cover)
+    await call.message.answer(
+        "📷 Raqamli kitob rasmini yuboring:",
+        reply_markup=back_kb("admin_books_menu")
+    )
+    await call.answer()
+
+@dp.message(BookAdminState.num_cover, F.photo)
+async def admin_books_num_cover(msg: Message, state: FSMContext):
+    await record_last_user_message(msg, state)
+    if msg.from_user.id != ADMIN_ID:
+        return
+    await state.update_data(num_cover=build_payload_from_message(msg))
+    await state.set_state(BookAdminState.num_info)
+    await msg.answer("📝 Raqamli kitob ma'lumotini yozing:", reply_markup=back_kb("admin_books_menu"))
+
+@dp.message(BookAdminState.num_cover)
+async def admin_books_num_cover_other(msg: Message, state: FSMContext):
+    await record_last_user_message(msg, state)
+    await msg.answer("Iltimos, rasm yuboring.", reply_markup=back_kb("admin_books_menu"))
+
+@dp.message(BookAdminState.num_info)
+async def admin_books_num_info(msg: Message, state: FSMContext):
+    await record_last_user_message(msg, state)
+    if msg.from_user.id != ADMIN_ID:
+        return
+    info = (msg.text or "").strip()
+    if not info:
+        await msg.answer("Iltimos, kitob ma'lumotini yozing.", reply_markup=back_kb("admin_books_menu"))
+        return
+    await state.update_data(num_info=info)
+    await state.set_state(BookAdminState.num_file)
+    await msg.answer("📄 Kitob faylini yuboring (hujjat/audio/ovoz/video):", reply_markup=back_kb("admin_books_menu"))
+
+@dp.message(BookAdminState.num_file)
+async def admin_books_num_file(msg: Message, state: FSMContext):
+    await record_last_user_message(msg, state)
+    if msg.from_user.id != ADMIN_ID:
+        return
+    payload = build_payload_from_message(msg)
+    if payload.get("type") not in {"document", "audio", "voice", "video"}:
+        await msg.answer("Iltimos, kitob faylini hujjat/audio/ovoz/video ko'rinishida yuboring.", reply_markup=back_kb("admin_books_menu"))
+        return
+    await state.update_data(num_file=payload)
+    await state.set_state(BookAdminState.num_number)
+    await msg.answer("🔢 Endi kitob ulanadigan raqamni yuboring (masalan: 1):", reply_markup=back_kb("admin_books_menu"))
+
+@dp.message(BookAdminState.num_number)
+async def admin_books_num_number(msg: Message, state: FSMContext):
+    await record_last_user_message(msg, state)
+    if msg.from_user.id != ADMIN_ID:
+        return
+    value = (msg.text or "").strip()
+    if not value.isdigit():
+        await msg.answer("Raqamni to'g'ri kiriting (faqat son).", reply_markup=back_kb("admin_books_menu"))
+        return
+    number = int(value)
+
+    data = await state.get_data()
+    cover = data.get("num_cover")
+    info = data.get("num_info")
+    file_payload = data.get("num_file")
+    if not isinstance(cover, dict) or not isinstance(file_payload, dict) or not info:
+        await msg.answer("Ma'lumotlar to'liq emas. Qaytadan boshlang.", reply_markup=admin_books_menu_kb())
+        await state.clear()
+        return
+
+    preview_item = {
+        "lookup_number": number,
+        "cover": cover,
+        "info": info,
+        "file": file_payload,
+    }
+    preview_ids = await send_book_item_block(msg.chat.id, preview_item, preview=True)
+    control_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="➕", callback_data="admin_books_num_confirm"),
+            InlineKeyboardButton(text="➖", callback_data="admin_books_num_cancel"),
+        ]
+    ])
+    ctrl_msg = await msg.answer(
+        f"Raqam: {number}\nTasdiqlaysizmi? (mavjud bo'lsa yangilanadi)",
+        reply_markup=control_kb
+    )
+    preview_ids.append(ctrl_msg.message_id)
+    await state.update_data(num_number=number, num_preview_ids=preview_ids)
+    await state.set_state(BookAdminState.num_confirm)
+
+@dp.callback_query(F.data == "admin_books_num_confirm")
+async def admin_books_num_confirm(call: CallbackQuery, state: FSMContext):
+    if call.from_user.id != ADMIN_ID:
+        await call.answer()
+        return
+    data = await state.get_data()
+    number = data.get("num_number")
+    cover = data.get("num_cover")
+    info = data.get("num_info")
+    file_payload = data.get("num_file")
+    if not isinstance(number, int) or not isinstance(cover, dict) or not isinstance(file_payload, dict) or not info:
+        await call.answer("Ma'lumotlar topilmadi.", show_alert=True)
+        return
+    add_numbered_book(number, cover, info, file_payload)
+    await state.clear()
+    await call.message.answer(f"✅ Raqamli kitob saqlandi: {number}", reply_markup=admin_books_menu_kb())
+    await call.answer("Saqlandi")
+
+@dp.callback_query(F.data == "admin_books_num_cancel")
+async def admin_books_num_cancel(call: CallbackQuery, state: FSMContext):
+    if call.from_user.id != ADMIN_ID:
+        await call.answer()
+        return
+    data = await state.get_data()
+    for msg_id in data.get("num_preview_ids", []):
+        try:
+            await bot.delete_message(call.from_user.id, msg_id)
+        except Exception:
+            pass
+    await state.clear()
+    await call.message.answer("❌ Raqamli kitob qo'shish bekor qilindi.", reply_markup=admin_books_menu_kb())
+    await call.answer("Bekor qilindi")
 
 @dp.callback_query(F.data == "admin_books_add_book")
 async def admin_books_add_book_start(call: CallbackQuery, state: FSMContext):
@@ -2340,9 +2611,9 @@ async def admin_books_add_confirm(call: CallbackQuery, state: FSMContext):
     if not section or not category or not info or not isinstance(cover, dict) or not isinstance(file_payload, dict):
         await call.answer("Ma'lumotlar topilmadi.", show_alert=True)
         return
-    number = add_book_item(section, category, cover, info, file_payload)
+    add_book_item(section, category, cover, info, file_payload)
     await state.clear()
-    await call.message.answer(f"✅ Kitob saqlandi. Raqami: {number}", reply_markup=admin_books_menu_kb())
+    await call.message.answer("✅ Kitob saqlandi.", reply_markup=admin_books_menu_kb())
     await call.answer("Saqlandi")
 
 @dp.callback_query(F.data == "admin_books_add_cancel")
