@@ -13,6 +13,7 @@ from aiogram.types import (
     Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton,
     InlineKeyboardMarkup, InlineKeyboardButton,
 )
+from aiogram.types import InputMediaPhoto, InputMediaDocument, InputMediaAudio, InputMediaVideo
 from aiogram.types import FSInputFile
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
@@ -127,6 +128,14 @@ BOOK_CATEGORY_TOPICS: dict[str, list[str]] = {
         "Tarix",
         "Biologiya",
     ],
+}
+
+BOOK_CATEGORY_EMOJI: dict[str, str] = {
+    "Motivatsion kitoblar": "📘",
+    "Badiiy adabiyot (Art / Romanlar)": "📙",
+    "Biznes va Startap": "📕",
+    "Psixologiya": "📗",
+    "Ilmiy-ommabop": "📔",
 }
 
 def default_books_data() -> dict:
@@ -670,7 +679,7 @@ def books_user_home_kb():
 def books_user_categories_kb(section: str):
     rows = []
     for idx, cat_name in enumerate(list_book_categories(section)):
-        rows.append([InlineKeyboardButton(text=cat_name, callback_data=f"books_user_cat_{section}_{idx}")])
+        rows.append([InlineKeyboardButton(text=category_title(cat_name), callback_data=f"books_user_cat_{section}_{idx}")])
     rows.append([InlineKeyboardButton(text="⬅️ Orqaga qaytish", callback_data="books_back_user_home")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -693,7 +702,7 @@ def admin_books_section_kb(prefix: str, back_callback: str = "admin_books_menu")
 def admin_books_categories_kb(section: str, prefix: str, back_callback: str):
     rows = []
     for idx, cat_name in enumerate(list_book_categories(section)):
-        rows.append([InlineKeyboardButton(text=cat_name, callback_data=f"{prefix}_{section}_{idx}")])
+        rows.append([InlineKeyboardButton(text=category_title(cat_name), callback_data=f"{prefix}_{section}_{idx}")])
     rows.append([InlineKeyboardButton(text="⬅️ Orqaga qaytish", callback_data=back_callback)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -706,6 +715,58 @@ def book_short_title(book_item: dict) -> str:
         return "Nomi ko'rsatilmagan"
     first_line = info.splitlines()[0].strip()
     return first_line[:50] + ("..." if len(first_line) > 50 else "")
+
+def category_title(name: str) -> str:
+    return f"{BOOK_CATEGORY_EMOJI.get(name, '📘')} {name}"
+
+def _payload_to_input_media(payload: dict, caption: str | None = None):
+    ptype = payload.get("type")
+    media = payload.get("file_id")
+    if not media:
+        return None
+    if ptype == "photo":
+        return InputMediaPhoto(media=media, caption=caption)
+    if ptype == "document":
+        return InputMediaDocument(media=media, caption=caption)
+    if ptype == "audio":
+        return InputMediaAudio(media=media, caption=caption)
+    if ptype == "video":
+        return InputMediaVideo(media=media, caption=caption)
+    return None
+
+async def send_book_item_block(chat_id: int, book_item: dict, preview: bool = False):
+    number = book_item.get("number", "-")
+    info = (book_item.get("info") or "").strip()
+    prefix = "📚 Yangi kitob preview" if preview else f"📚 Kitob #{number}"
+    caption = f"{prefix}\n\n{info}" if info else prefix
+    cover = book_item.get("cover")
+    file_payload = book_item.get("file")
+
+    if isinstance(cover, dict) and isinstance(file_payload, dict):
+        m1 = _payload_to_input_media(cover, caption=caption)
+        m2 = _payload_to_input_media(file_payload, caption=None)
+        if m1 and m2:
+            try:
+                msgs = await bot.send_media_group(chat_id, media=[m1, m2])
+                return [m.message_id for m in msgs]
+            except Exception:
+                pass
+
+    if isinstance(file_payload, dict):
+        p = dict(file_payload)
+        if p.get("type") in {"photo", "document", "audio", "video", "voice"}:
+            p["caption"] = caption
+            m = await send_payload_to_chat(chat_id, p, with_caption=True)
+            return [m.message_id] if hasattr(m, "message_id") else []
+
+    if isinstance(cover, dict):
+        p = dict(cover)
+        p["caption"] = caption
+        m = await send_payload_to_chat(chat_id, p, with_caption=True)
+        return [m.message_id] if hasattr(m, "message_id") else []
+
+    m = await bot.send_message(chat_id, caption)
+    return [m.message_id]
 
 # ===================== START + BANNER + OBUNA =====================
 @dp.message(F.text == "/start")
@@ -1046,35 +1107,36 @@ async def books_user_category(call: CallbackQuery, state: FSMContext):
 
     topics = BOOK_CATEGORY_TOPICS.get(category, [])
     topic_lines = "\n".join([f"• {t}" for t in topics]) if topics else "• Mavzu qo'shilmagan"
-
     books = list_books_in_category(section, category)
-    if books:
-        book_lines = "\n".join([f"{b.get('number', '-')} - {book_short_title(b)}" for b in books[:30]])
-        books_text = f"\n\nMavjud kitoblar:\n{book_lines}"
-    else:
-        books_text = "\n\nHozircha kitob qo'shilmagan."
 
-    text = (
-        f"{section_title(section)}\n"
-        f"{category}\n\n"
-        f"{topic_lines}"
-        f"{books_text}\n\n"
-        "🔢 Raqam orqali topish uchun kitob raqamini yuboring."
-    )
-
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔢 Raqam yuborish", callback_data="books_user_number")],
-        [InlineKeyboardButton(text="⬅️ Orqaga qaytish", callback_data=f"books_user_{section}")],
-        [InlineKeyboardButton(text="🏠 Menyuga qaytish", callback_data="books_back_main")],
-    ])
-
-    await state.set_state(BookUserState.number_lookup)
-    await state.update_data(book_last_section=section, book_last_category=category)
     try:
         await call.message.delete()
     except Exception:
         pass
-    await call.message.answer(text, reply_markup=kb)
+
+    header = (
+        f"{section_title(section)}\n"
+        f"{category_title(category)}\n\n"
+        f"{topic_lines}\n\n"
+        f"Jami kitob: {len(books)} ta"
+    )
+    await call.message.answer(header)
+
+    if books:
+        for item in books:
+            await send_book_item_block(call.from_user.id, item)
+            await asyncio.sleep(0.05)
+    else:
+        await call.message.answer("Hozircha bu yo'nalishda kitob yo'q.")
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔢 Raqam orqali topish", callback_data="books_user_number")],
+        [InlineKeyboardButton(text="⬅️ Orqaga qaytish", callback_data=f"books_user_{section}")],
+        [InlineKeyboardButton(text="🏠 Menyuga qaytish", callback_data="books_back_main")],
+    ])
+    await call.message.answer("Kerakli kitobni raqam orqali ham topishingiz mumkin.", reply_markup=kb)
+    await state.set_state(BookUserState.number_lookup)
+    await state.update_data(book_last_section=section, book_last_category=category)
     await call.answer()
 
 @dp.message(BookUserState.number_lookup)
@@ -1092,17 +1154,8 @@ async def books_number_lookup(msg: Message, state: FSMContext):
         return
 
     section, category, book_item = found
-    cover_payload = book_item.get("cover")
-    info_text = book_item.get("info", "")
-    file_payload = book_item.get("file")
-
-    await msg.answer(f"✅ Topildi: {section_title(section)} / {category}")
-    if isinstance(cover_payload, dict):
-        await send_payload(msg, cover_payload)
-    if info_text:
-        await msg.answer(info_text)
-    if isinstance(file_payload, dict):
-        await send_payload(msg, file_payload)
+    await msg.answer(f"✅ Topildi: {section_title(section)} / {category_title(category)}")
+    await send_book_item_block(msg.chat.id, book_item)
 
     await msg.answer(
         "Yana kitob raqamini yuborishingiz mumkin.",
@@ -2046,9 +2099,9 @@ async def admin_books_view_category(call: CallbackQuery, state: FSMContext):
     books = list_books_in_category(section, category)
     if books:
         lines = [f"{b.get('number', '-')} - {book_short_title(b)}" for b in books]
-        text = f"{section_title(section)}\n{category}\n\n" + "\n".join(lines)
+        text = f"{section_title(section)}\n{category_title(category)}\n\n" + "\n".join(lines)
     else:
-        text = f"{section_title(section)}\n{category}\n\n(hozircha bo'sh)"
+        text = f"{section_title(section)}\n{category_title(category)}\n\n(hozircha bo'sh)"
 
     rows = []
     for b in books:
@@ -2092,9 +2145,9 @@ async def admin_books_delete(call: CallbackQuery, state: FSMContext):
     books = list_books_in_category(section, category)
     if books:
         lines = [f"{b.get('number', '-')} - {book_short_title(b)}" for b in books]
-        text = f"{section_title(section)}\n{category}\n\n" + "\n".join(lines)
+        text = f"{section_title(section)}\n{category_title(category)}\n\n" + "\n".join(lines)
     else:
-        text = f"{section_title(section)}\n{category}\n\n(hozircha bo'sh)"
+        text = f"{section_title(section)}\n{category_title(category)}\n\n(hozircha bo'sh)"
     rows = []
     for b in books:
         num = int(b.get("number", 0))
@@ -2254,18 +2307,13 @@ async def admin_books_add_book_file(msg: Message, state: FSMContext):
         return
 
     await state.update_data(book_file=payload)
-    preview_ids = []
-    try:
-        cover_msg = await bot.send_photo(msg.chat.id, cover.get("file_id"), caption=f"📚 Preview\n{section_title(section)} / {category}\n\n{info}")
-        preview_ids.append(cover_msg.message_id)
-    except Exception:
-        pass
-    try:
-        file_msg = await send_payload_to_chat(msg.chat.id, payload, with_caption=True)
-        if hasattr(file_msg, "message_id"):
-            preview_ids.append(file_msg.message_id)
-    except Exception:
-        pass
+    preview_item = {
+        "number": "-",
+        "cover": cover,
+        "info": f"{section_title(section)} / {category_title(category)}\n\n{info}",
+        "file": payload,
+    }
+    preview_ids = await send_book_item_block(msg.chat.id, preview_item, preview=True)
 
     control_kb = InlineKeyboardMarkup(inline_keyboard=[
         [
