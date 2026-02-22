@@ -801,15 +801,32 @@ async def send_book_item_block(chat_id: int, book_item: dict, preview: bool = Fa
     cover = book_item.get("cover")
     file_payload = book_item.get("file")
 
+    # Telegram albom cheklovi:
+    # photo+video birga bo'ladi, lekin photo+document yoki photo+audio birga yuborilmaydi.
     if isinstance(cover, dict) and isinstance(file_payload, dict):
-        m1 = _payload_to_input_media(cover, caption=caption)
-        m2 = _payload_to_input_media(file_payload, caption=None)
-        if m1 and m2:
-            try:
-                msgs = await bot.send_media_group(chat_id, media=[m1, m2])
-                return [m.message_id for m in msgs]
-            except Exception:
-                pass
+        ctype = cover.get("type")
+        ftype = file_payload.get("type")
+        can_album = (ctype in {"photo", "video"}) and (ftype in {"photo", "video"})
+        if can_album:
+            m1 = _payload_to_input_media(cover, caption=caption)
+            m2 = _payload_to_input_media(file_payload, caption=None)
+            if m1 and m2:
+                try:
+                    msgs = await bot.send_media_group(chat_id, media=[m1, m2])
+                    return [m.message_id for m in msgs]
+                except Exception:
+                    pass
+        # Albom bo'lmasa: avval rasm + matn, keyin faylni yuboramiz.
+        sent_ids = []
+        c = dict(cover)
+        c["caption"] = caption
+        cm = await send_payload_to_chat(chat_id, c, with_caption=True)
+        if hasattr(cm, "message_id"):
+            sent_ids.append(cm.message_id)
+        fm = await send_payload_to_chat(chat_id, file_payload, with_caption=False)
+        if hasattr(fm, "message_id"):
+            sent_ids.append(fm.message_id)
+        return sent_ids
 
     if isinstance(file_payload, dict):
         p = dict(file_payload)
