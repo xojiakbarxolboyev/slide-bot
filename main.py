@@ -2,6 +2,7 @@
 import json
 import asyncio
 import random
+from collections import deque
 from datetime import datetime
 from time import monotonic
 from pathlib import Path
@@ -87,28 +88,81 @@ async def answer_with_image(message: Message, image_path: Path, caption: str, re
     return await message.answer(caption, reply_markup=reply_markup, parse_mode=parse_mode)
 
 class ThrottleMiddleware(BaseMiddleware):
-    def __init__(self, min_interval: float = 0.7, warn_interval: float = 2.0):
+    def __init__(
+        self,
+        min_interval: float = 0.35,
+        warn_interval: float = 2.0,
+        burst_limit: int = 10,
+        burst_window: float = 3.0,
+        block_seconds: float = 10.0,
+    ):
         self.min_interval = min_interval
         self.warn_interval = warn_interval
+        self.burst_limit = burst_limit
+        self.burst_window = burst_window
+        self.block_seconds = block_seconds
         self.last_time: dict[int, float] = {}
         self.last_warn: dict[int, float] = {}
+        self.blocked_until: dict[int, float] = {}
+        self.hit_times: dict[int, deque[float]] = {}
+
+    async def _warn_user(self, event, text: str):
+        try:
+            if isinstance(event, CallbackQuery):
+                await event.answer(text, show_alert=False)
+            elif isinstance(event, Message):
+                await event.answer(text)
+        except Exception:
+            if isinstance(event, CallbackQuery) and event.message:
+                try:
+                    await event.message.answer(text)
+                except Exception:
+                    pass
 
     async def __call__(self, handler, event, data):
-        if isinstance(event, Message) and event.from_user:
+        if isinstance(event, (Message, CallbackQuery)) and event.from_user:
             user_id = event.from_user.id
-            if user_id != ADMIN_ID:
+            if user_id not in {ADMIN_ID, INFO_ADMIN_ID}:
                 now = monotonic()
+
+                blocked_to = self.blocked_until.get(user_id, 0.0)
+                if now < blocked_to:
+                    last_warn = self.last_warn.get(user_id, 0.0)
+                    if now - last_warn > self.warn_interval:
+                        remaining = int(blocked_to - now) + 1
+                        await self._warn_user(
+                            event,
+                            f"⏳ Juda tez so'rov yuboryapsiz. {remaining} soniyadan keyin urinib ko'ring.",
+                        )
+                        self.last_warn[user_id] = now
+                    return
+
+                # Xabar + tugmalar bo'yicha tez urinishlarni hisoblash
+                user_hits = self.hit_times.setdefault(user_id, deque())
+                user_hits.append(now)
+                while user_hits and now - user_hits[0] > self.burst_window:
+                    user_hits.popleft()
+
+                if len(user_hits) >= self.burst_limit:
+                    self.blocked_until[user_id] = now + self.block_seconds
+                    self.last_warn[user_id] = now
+                    user_hits.clear()
+                    await self._warn_user(
+                        event,
+                        f"⛔ Juda ko'p urinish. {int(self.block_seconds)} soniyadan keyin urinib ko'ring.",
+                    )
+                    return
+
+                # Juda tez ketma-ket bosishlarni ham kamaytirish
                 last = self.last_time.get(user_id, 0.0)
                 if now - last < self.min_interval:
                     last_warn = self.last_warn.get(user_id, 0.0)
                     if now - last_warn > self.warn_interval:
-                        try:
-                            await event.answer("Iltimos, sekinroq yuboring.")
-                        except Exception:
-                            pass
+                        await self._warn_user(event, "Iltimos, sekinroq yuboring.")
                         self.last_warn[user_id] = now
                     return
                 self.last_time[user_id] = now
+
         return await handler(event, data)
 
 # ===================== BANNER (BotFatherda description qo'yiladi) =====================
@@ -960,7 +1014,15 @@ dp.include_router(priority_router)
 dp.include_router(reg_router)  # ro'yxat orqaga qaytish birinchi tekshirilsin
 
 # Anti-flood
-dp.message.middleware(ThrottleMiddleware(min_interval=0.7, warn_interval=2.0))
+throttle_middleware = ThrottleMiddleware(
+    min_interval=0.35,
+    warn_interval=2.0,
+    burst_limit=10,
+    burst_window=3.0,
+    block_seconds=10.0,
+)
+dp.message.middleware(throttle_middleware)
+dp.callback_query.middleware(throttle_middleware)
 
 # ===================== DEBUG =====================
 @priority_router.message(F.text == "/ping")
