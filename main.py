@@ -55,6 +55,8 @@ UI_IMAGE_MAP = {
     "slide_topic": BASE_DIR / "3.png",
     "ai_video": BASE_DIR / "4.png",
     "bot_create": BASE_DIR / "5.png",
+    "nakrutka": BASE_DIR / "6.png",
+    "books_home": BASE_DIR / "7.png",
 }
 
 async def record_last_user_message(msg: Message, state: FSMContext):
@@ -700,7 +702,7 @@ def menu_kb(is_admin: bool = False):
         [KeyboardButton(text="🧑‍💼 Admin bilan bog'lanish")],
         [KeyboardButton(text="📝 Slayd buyurtma"), KeyboardButton(text="🎥 AI Video")],
         [KeyboardButton(text="🎬 Kino kodlari"), KeyboardButton(text="📚 Foydali kodlar")],
-        [KeyboardButton(text="📖 Kitoblar")],
+        [KeyboardButton(text="📖 Kitoblar"), KeyboardButton(text="📈 Nakrutka")],
         [KeyboardButton(text="🤖 Bot yaratib berish")],
     ]
     if is_admin:
@@ -1143,7 +1145,12 @@ async def books_start(msg: Message, state: FSMContext):
         return
     await state.clear()
     await state.set_state(BookUserState.menu)
-    await msg.answer("📚 Kitoblar bo'limi:", reply_markup=books_user_home_kb())
+    await answer_with_image(
+        msg,
+        UI_IMAGE_MAP["books_home"],
+        "📚 Kitoblar bo'limi:",
+        reply_markup=books_user_home_kb(),
+    )
 
 @dp.callback_query(F.data == "books_back_main")
 async def books_back_main(call: CallbackQuery, state: FSMContext):
@@ -1169,7 +1176,12 @@ async def books_back_user_home(call: CallbackQuery, state: FSMContext):
         await call.message.delete()
     except Exception:
         pass
-    await call.message.answer("📚 Kitoblar bo'limi:", reply_markup=books_user_home_kb())
+    await answer_with_image(
+        call.message,
+        UI_IMAGE_MAP["books_home"],
+        "📚 Kitoblar bo'limi:",
+        reply_markup=books_user_home_kb(),
+    )
     await call.answer()
 
 @dp.callback_query(F.data == "books_user_online")
@@ -1528,6 +1540,20 @@ async def admin_contact(msg: Message, state: FSMContext):
     await msg.answer(
         " Taklif yoki muammo bo'lsa, adminga murojaat qiling.",
         reply_markup=kb
+    )
+
+@priority_router.message(F.text.contains("Nakrutka"))
+async def nakrutka_contact(msg: Message, state: FSMContext):
+    await delete_last_user_message(state)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💬 Adminga yozish", url=f"tg://user?id={ADMIN_ID}")]
+    ])
+    await answer_with_image(
+        msg,
+        UI_IMAGE_MAP["nakrutka"],
+        "📈 Barcha turdagi nakrutka xizmatlar bor.\n"
+        "ℹ️ Foydalanish va narxlarni bilish uchun adminga murojaat qiling.",
+        reply_markup=kb,
     )
 
 # ===================== BOT YARATISH =====================
