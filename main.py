@@ -96,9 +96,82 @@ BANNER = (
     "Botdan to'liq foydalanish uchun quyidagi kanalga obuna bo'ling va /start bosing."
 )
 
+BOOK_CATEGORY_TOPICS: dict[str, list[str]] = {
+    "Motivatsion kitoblar": [
+        "O'z-o'zini rivojlantirish",
+        "Irodani oshirish",
+        "Maqsad qo'yish",
+        "Boylik psixologiyasi",
+    ],
+    "Badiiy adabiyot (Art / Romanlar)": [
+        "Romanlar",
+        "Hikoyalar",
+        "Detektiv",
+        "Sarguzasht",
+    ],
+    "Biznes va Startap": [
+        "Biznes boshlash",
+        "Marketologiya",
+        "Pul boshqaruvi",
+        "Muloqot ko'nikmalari",
+    ],
+    "Psixologiya": [
+        "Inson ruhiyati",
+        "Stress boshqaruvi",
+        "Munosabatlar",
+        "Shaxsiyat",
+    ],
+    "Ilmiy-ommabop": [
+        "Fizika",
+        "Kosmos",
+        "Tarix",
+        "Biologiya",
+    ],
+}
+
+def default_books_data() -> dict:
+    online = {name: [] for name in BOOK_CATEGORY_TOPICS.keys()}
+    audio = {name: [] for name in BOOK_CATEGORY_TOPICS.keys()}
+    return {"next_number": 1, "online": online, "audio": audio}
+
+def normalize_books_data(raw) -> dict:
+    data = default_books_data()
+    if not isinstance(raw, dict):
+        return data
+
+    max_number = 0
+    next_number = raw.get("next_number", 1)
+    if isinstance(next_number, int) and next_number > 0:
+        data["next_number"] = next_number
+
+    for section in ("online", "audio"):
+        section_raw = raw.get(section)
+        if not isinstance(section_raw, dict):
+            continue
+        for cat_name, items in section_raw.items():
+            if not isinstance(items, list):
+                continue
+            data[section][str(cat_name)] = items
+            for item in items:
+                if isinstance(item, dict):
+                    number = item.get("number")
+                    if isinstance(number, int) and number > max_number:
+                        max_number = number
+
+    if data["next_number"] <= max_number:
+        data["next_number"] = max_number + 1
+    return data
+
 # ===================== USER STORAGE =====================
 def default_users_data() -> dict:
-    return {"users": {}, "next_status": 1, "bilim": {}, "kino": {}, "orders": []}
+    return {
+        "users": {},
+        "next_status": 1,
+        "bilim": {},
+        "kino": {},
+        "books": default_books_data(),
+        "orders": [],
+    }
 
 def load_users():
     data = default_users_data()
@@ -110,6 +183,7 @@ def load_users():
                 data["users"] = raw.get("users") if isinstance(raw.get("users"), dict) else {}
                 data["bilim"] = raw.get("bilim") if isinstance(raw.get("bilim"), dict) else {}
                 data["kino"] = raw.get("kino") if isinstance(raw.get("kino"), dict) else {}
+                data["books"] = normalize_books_data(raw.get("books"))
                 data["orders"] = raw.get("orders") if isinstance(raw.get("orders"), list) else []
 
                 next_status = raw.get("next_status", 1)
@@ -223,6 +297,89 @@ def list_kino_numbers() -> list[tuple[int, str]]:
             continue
     return sorted(items, key=lambda x: x[0])
 
+def add_book_direction(direction_name: str):
+    data = load_users()
+    books = normalize_books_data(data.get("books"))
+    for section in ("online", "audio"):
+        if direction_name not in books[section]:
+            books[section][direction_name] = []
+    data["books"] = books
+    save_users(data)
+
+def list_book_categories(section: str) -> list[str]:
+    data = load_users()
+    books = normalize_books_data(data.get("books"))
+    section_data = books.get(section, {})
+    return list(section_data.keys()) if isinstance(section_data, dict) else []
+
+def get_book_category_by_index(section: str, idx: int) -> str | None:
+    cats = list_book_categories(section)
+    if idx < 0 or idx >= len(cats):
+        return None
+    return cats[idx]
+
+def add_book_item(section: str, category: str, cover_payload, info_text: str, file_payload) -> int:
+    data = load_users()
+    books = normalize_books_data(data.get("books"))
+    section_data = books.setdefault(section, {})
+    items = section_data.setdefault(category, [])
+
+    number = int(books.get("next_number", 1))
+    book_item = {
+        "number": number,
+        "cover": cover_payload,
+        "info": info_text,
+        "file": file_payload,
+        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    items.append(book_item)
+    books["next_number"] = number + 1
+    data["books"] = books
+    save_users(data)
+    return number
+
+def list_books_in_category(section: str, category: str) -> list[dict]:
+    data = load_users()
+    books = normalize_books_data(data.get("books"))
+    section_data = books.get(section, {})
+    items = section_data.get(category, []) if isinstance(section_data, dict) else []
+    if not isinstance(items, list):
+        return []
+    return sorted([i for i in items if isinstance(i, dict)], key=lambda x: int(x.get("number", 0)))
+
+def find_book_by_number(number: int):
+    data = load_users()
+    books = normalize_books_data(data.get("books"))
+    for section in ("online", "audio"):
+        section_data = books.get(section, {})
+        if not isinstance(section_data, dict):
+            continue
+        for category, items in section_data.items():
+            if not isinstance(items, list):
+                continue
+            for item in items:
+                if isinstance(item, dict) and int(item.get("number", -1)) == number:
+                    return section, category, item
+    return None
+
+def delete_book_by_number(section: str, number: int) -> bool:
+    data = load_users()
+    books = normalize_books_data(data.get("books"))
+    section_data = books.get(section, {})
+    if not isinstance(section_data, dict):
+        return False
+    for category, items in section_data.items():
+        if not isinstance(items, list):
+            continue
+        new_items = [i for i in items if not (isinstance(i, dict) and int(i.get("number", -1)) == number)]
+        if len(new_items) != len(items):
+            section_data[category] = new_items
+            books[section] = section_data
+            data["books"] = books
+            save_users(data)
+            return True
+    return False
+
 def summarize_payload(payload) -> str:
     if isinstance(payload, dict):
         ptype = payload.get("type", "text")
@@ -236,7 +393,7 @@ def summarize_payload(payload) -> str:
 
 def summarize_payload_list(payload) -> str:
     if isinstance(payload, list):
-        counts = {"text": 0, "photo": 0, "video": 0, "document": 0, "voice": 0, "other": 0}
+        counts = {"text": 0, "photo": 0, "video": 0, "document": 0, "voice": 0, "audio": 0, "other": 0}
         for item in payload:
             if isinstance(item, dict):
                 counts[item.get("type", "other")] = counts.get(item.get("type", "other"), 0) + 1
@@ -253,6 +410,8 @@ def summarize_payload_list(payload) -> str:
             parts.append(f"fayl {counts['document']}")
         if counts["voice"]:
             parts.append(f"ovoz {counts['voice']}")
+        if counts["audio"]:
+            parts.append(f"audio {counts['audio']}")
         if counts["other"]:
             parts.append(f"boshqa {counts['other']}")
         return ", ".join(parts) if parts else "bo'sh"
@@ -265,6 +424,8 @@ def build_payload_from_message(msg: Message) -> dict:
         return {"type": "video", "file_id": msg.video.file_id, "caption": msg.caption or ""}
     if msg.document:
         return {"type": "document", "file_id": msg.document.file_id, "caption": msg.caption or ""}
+    if msg.audio:
+        return {"type": "audio", "file_id": msg.audio.file_id, "caption": msg.caption or ""}
     if msg.voice:
         return {"type": "voice", "file_id": msg.voice.file_id, "caption": msg.caption or ""}
     return {"type": "text", "text": msg.text or ""}
@@ -278,6 +439,8 @@ async def send_payload(msg: Message, payload):
             await msg.answer_video(payload.get("file_id"), caption=payload.get("caption"))
         elif ptype == "document":
             await msg.answer_document(payload.get("file_id"), caption=payload.get("caption"))
+        elif ptype == "audio":
+            await msg.answer_audio(payload.get("file_id"), caption=payload.get("caption"))
         elif ptype == "voice":
             await msg.answer_voice(payload.get("file_id"), caption=payload.get("caption"))
         elif ptype == "text":
@@ -300,19 +463,20 @@ def get_answer_value(msg: Message) -> str:
 
 async def send_payload_to_chat(chat_id: int, payload, with_caption: bool = True):
     if not isinstance(payload, dict):
-        await bot.send_message(chat_id, str(payload))
-        return
+        return await bot.send_message(chat_id, str(payload))
     ptype = payload.get("type")
     if ptype == "photo":
-        await bot.send_photo(chat_id, payload.get("file_id"), caption=payload.get("caption") if with_caption else None)
+        return await bot.send_photo(chat_id, payload.get("file_id"), caption=payload.get("caption") if with_caption else None)
     elif ptype == "video":
-        await bot.send_video(chat_id, payload.get("file_id"), caption=payload.get("caption") if with_caption else None)
+        return await bot.send_video(chat_id, payload.get("file_id"), caption=payload.get("caption") if with_caption else None)
     elif ptype == "document":
-        await bot.send_document(chat_id, payload.get("file_id"), caption=payload.get("caption") if with_caption else None)
+        return await bot.send_document(chat_id, payload.get("file_id"), caption=payload.get("caption") if with_caption else None)
+    elif ptype == "audio":
+        return await bot.send_audio(chat_id, payload.get("file_id"), caption=payload.get("caption") if with_caption else None)
     elif ptype == "voice":
-        await bot.send_voice(chat_id, payload.get("file_id"), caption=payload.get("caption") if with_caption else None)
+        return await bot.send_voice(chat_id, payload.get("file_id"), caption=payload.get("caption") if with_caption else None)
     else:
-        await bot.send_message(chat_id, payload.get("text") or payload.get("caption") or "")
+        return await bot.send_message(chat_id, payload.get("text") or payload.get("caption") or "")
 
 def record_paid_order(user_id: int, service: str):
     data = load_users()
@@ -434,12 +598,24 @@ class KinoAdminState(StatesGroup):
     add_message = State()
     del_number = State()
 
+class BookUserState(StatesGroup):
+    menu = State()
+    number_lookup = State()
+
+class BookAdminState(StatesGroup):
+    add_direction = State()
+    add_book_cover = State()
+    add_book_info = State()
+    add_book_file = State()
+    add_book_confirm = State()
+
 # ===================== KEYBOARDS =====================
 def menu_kb(is_admin: bool = False):
     rows = [
         [KeyboardButton(text="🧑‍💼 Admin bilan bog'lanish")],
         [KeyboardButton(text="📝 Slayd buyurtma"), KeyboardButton(text="🎥 AI Video")],
         [KeyboardButton(text="🎬 Kino kodlari"), KeyboardButton(text="📚 Foydali kodlar")],
+        [KeyboardButton(text="📖 Kitoblar")],
         [KeyboardButton(text="🤖 Bot yaratib berish")],
     ]
     if is_admin:
@@ -462,6 +638,7 @@ def admin_panel_kb():
         [InlineKeyboardButton(text="📊 Statistika", callback_data="admin_stats")],
         [InlineKeyboardButton(text="🧾 User info", callback_data="admin_users_export")],
         [InlineKeyboardButton(text="📣 Hammaga xabar", callback_data="admin_broadcast")],
+        [InlineKeyboardButton(text="📚 Kitoblar", callback_data="admin_books_menu")],
         [InlineKeyboardButton(text="🔢 Raqamlar", callback_data="admin_numbers")],
         [InlineKeyboardButton(text="🎬 Kino raqam", callback_data="admin_kino_numbers")],
         [InlineKeyboardButton(text="📦 Buyurtma tayyor", callback_data="admin_order_ready")],
@@ -481,6 +658,54 @@ def admin_kino_kb():
         [InlineKeyboardButton(text="🗑️ Raqam o'chirish", callback_data="admin_kino_delete")],
         [InlineKeyboardButton(text="⬅️ Orqaga qaytish", callback_data="admin_back_main")],
     ])
+
+def books_user_home_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📚 Online Kitoblar", callback_data="books_user_online")],
+        [InlineKeyboardButton(text="🎧 Audio kitoblar", callback_data="books_user_audio")],
+        [InlineKeyboardButton(text="🔢 Raqam orqali kitob topish", callback_data="books_user_number")],
+        [InlineKeyboardButton(text="⬅️ Orqaga qaytish", callback_data="books_back_main")],
+    ])
+
+def books_user_categories_kb(section: str):
+    rows = []
+    for idx, cat_name in enumerate(list_book_categories(section)):
+        rows.append([InlineKeyboardButton(text=cat_name, callback_data=f"books_user_cat_{section}_{idx}")])
+    rows.append([InlineKeyboardButton(text="⬅️ Orqaga qaytish", callback_data="books_back_user_home")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+def admin_books_menu_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📂 Barchasi", callback_data="admin_books_all")],
+        [InlineKeyboardButton(text="➕ Kitob qo'shish", callback_data="admin_books_add_book")],
+        [InlineKeyboardButton(text="➕ Yo'nalish qo'shish", callback_data="admin_books_add_direction")],
+        [InlineKeyboardButton(text="⬅️ Orqaga qaytish", callback_data="admin_back_main")],
+    ])
+
+def admin_books_section_kb(prefix: str, back_callback: str = "admin_books_menu"):
+    rows = [
+        [InlineKeyboardButton(text="📚 Online Kitoblar", callback_data=f"{prefix}_online")],
+        [InlineKeyboardButton(text="🎧 Audio kitoblar", callback_data=f"{prefix}_audio")],
+        [InlineKeyboardButton(text="⬅️ Orqaga qaytish", callback_data=back_callback)],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+def admin_books_categories_kb(section: str, prefix: str, back_callback: str):
+    rows = []
+    for idx, cat_name in enumerate(list_book_categories(section)):
+        rows.append([InlineKeyboardButton(text=cat_name, callback_data=f"{prefix}_{section}_{idx}")])
+    rows.append([InlineKeyboardButton(text="⬅️ Orqaga qaytish", callback_data=back_callback)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+def section_title(section: str) -> str:
+    return "📚 Online Kitoblar" if section == "online" else "🎧 Audio kitoblar"
+
+def book_short_title(book_item: dict) -> str:
+    info = (book_item.get("info") or "").strip()
+    if not info:
+        return "Nomi ko'rsatilmagan"
+    first_line = info.splitlines()[0].strip()
+    return first_line[:50] + ("..." if len(first_line) > 50 else "")
 
 # ===================== START + BANNER + OBUNA =====================
 @dp.message(F.text == "/start")
@@ -726,6 +951,168 @@ async def back_bilim_menu(call: CallbackQuery, state: FSMContext):
         pass
     await call.message.answer("Xizmatni tanlang 👇", reply_markup=menu_kb(call.from_user.id == ADMIN_ID))
     await call.answer()
+
+# ===================== KITOBLAR ==================
+@dp.message(StateFilter(None), F.text.contains("Kitoblar"))
+async def books_start(msg: Message, state: FSMContext):
+    if not is_registered(msg.from_user.id):
+        await msg.answer("🔒 Avval ro'yxatdan o'ting. /start bosing.", reply_markup=sub_kb())
+        return
+    await state.clear()
+    await state.set_state(BookUserState.menu)
+    await msg.answer("📚 Kitoblar bo'limi:", reply_markup=books_user_home_kb())
+
+@dp.callback_query(F.data == "books_back_main")
+async def books_back_main(call: CallbackQuery, state: FSMContext):
+    await delete_last_user_message(state)
+    await state.clear()
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
+    await call.message.answer("Xizmatni tanlang 👇", reply_markup=menu_kb(call.from_user.id == ADMIN_ID))
+    await call.answer()
+
+@dp.callback_query(F.data == "books_back_user_home")
+async def books_back_user_home(call: CallbackQuery, state: FSMContext):
+    await delete_last_user_message(state)
+    await state.set_state(BookUserState.menu)
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
+    await call.message.answer("📚 Kitoblar bo'limi:", reply_markup=books_user_home_kb())
+    await call.answer()
+
+@dp.callback_query(F.data == "books_user_online")
+async def books_user_online(call: CallbackQuery, state: FSMContext):
+    await delete_last_user_message(state)
+    await state.set_state(BookUserState.menu)
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
+    await call.message.answer(
+        "📚 Online kitoblar yo'nalishini tanlang:",
+        reply_markup=books_user_categories_kb("online")
+    )
+    await call.answer()
+
+@dp.callback_query(F.data == "books_user_audio")
+async def books_user_audio(call: CallbackQuery, state: FSMContext):
+    await delete_last_user_message(state)
+    await state.set_state(BookUserState.menu)
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
+    await call.message.answer(
+        "🎧 Audio kitoblar yo'nalishini tanlang:",
+        reply_markup=books_user_categories_kb("audio")
+    )
+    await call.answer()
+
+@dp.callback_query(F.data == "books_user_number")
+async def books_user_number(call: CallbackQuery, state: FSMContext):
+    await delete_last_user_message(state)
+    await state.set_state(BookUserState.number_lookup)
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
+    await call.message.answer(
+        "🔢 Kitob raqamini yuboring:",
+        reply_markup=back_kb("books_back_user_home")
+    )
+    await call.answer()
+
+@dp.callback_query(F.data.startswith("books_user_cat_"))
+async def books_user_category(call: CallbackQuery, state: FSMContext):
+    await delete_last_user_message(state)
+    parts = call.data.split("_")
+    if len(parts) < 5:
+        await call.answer()
+        return
+    section = parts[3]
+    try:
+        idx = int(parts[4])
+    except ValueError:
+        await call.answer()
+        return
+    category = get_book_category_by_index(section, idx)
+    if not category:
+        await call.answer()
+        return
+
+    topics = BOOK_CATEGORY_TOPICS.get(category, [])
+    topic_lines = "\n".join([f"• {t}" for t in topics]) if topics else "• Mavzu qo'shilmagan"
+
+    books = list_books_in_category(section, category)
+    if books:
+        book_lines = "\n".join([f"{b.get('number', '-')} - {book_short_title(b)}" for b in books[:30]])
+        books_text = f"\n\nMavjud kitoblar:\n{book_lines}"
+    else:
+        books_text = "\n\nHozircha kitob qo'shilmagan."
+
+    text = (
+        f"{section_title(section)}\n"
+        f"{category}\n\n"
+        f"{topic_lines}"
+        f"{books_text}\n\n"
+        "🔢 Raqam orqali topish uchun kitob raqamini yuboring."
+    )
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔢 Raqam yuborish", callback_data="books_user_number")],
+        [InlineKeyboardButton(text="⬅️ Orqaga qaytish", callback_data=f"books_user_{section}")],
+        [InlineKeyboardButton(text="🏠 Menyuga qaytish", callback_data="books_back_main")],
+    ])
+
+    await state.set_state(BookUserState.number_lookup)
+    await state.update_data(book_last_section=section, book_last_category=category)
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
+    await call.message.answer(text, reply_markup=kb)
+    await call.answer()
+
+@dp.message(BookUserState.number_lookup)
+async def books_number_lookup(msg: Message, state: FSMContext):
+    await record_last_user_message(msg, state)
+    value = get_answer_value(msg)
+    if not value.isdigit():
+        await msg.answer("Raqamni to'g'ri kiriting (faqat son):", reply_markup=back_kb("books_back_user_home"))
+        return
+
+    number = int(value)
+    found = find_book_by_number(number)
+    if not found:
+        await msg.answer("Bu raqam bo'yicha kitob topilmadi. Qayta kiriting:", reply_markup=back_kb("books_back_user_home"))
+        return
+
+    section, category, book_item = found
+    cover_payload = book_item.get("cover")
+    info_text = book_item.get("info", "")
+    file_payload = book_item.get("file")
+
+    await msg.answer(f"✅ Topildi: {section_title(section)} / {category}")
+    if isinstance(cover_payload, dict):
+        await send_payload(msg, cover_payload)
+    if info_text:
+        await msg.answer(info_text)
+    if isinstance(file_payload, dict):
+        await send_payload(msg, file_payload)
+
+    await msg.answer(
+        "Yana kitob raqamini yuborishingiz mumkin.",
+        reply_markup=back_kb("books_back_user_home")
+    )
+
+@dp.message(BookUserState.menu)
+async def books_menu_fallback(msg: Message, state: FSMContext):
+    await record_last_user_message(msg, state)
+    await msg.answer("Tanlovni tugmalar orqali qiling.", reply_markup=books_user_home_kb())
 
 # ===================== SLAYD =========================
 # ====================================================
@@ -1581,6 +1968,349 @@ async def admin_broadcast_send(msg: Message, state: FSMContext):
     except Exception:
         pass
     await state.clear()
+
+@dp.callback_query(F.data == "admin_books_menu")
+async def admin_books_menu(call: CallbackQuery, state: FSMContext):
+    await delete_last_user_message(state)
+    if call.from_user.id != ADMIN_ID:
+        await call.answer()
+        return
+    await state.clear()
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
+    await call.message.answer("📚 Kitoblar boshqaruvi", reply_markup=admin_books_menu_kb())
+    await call.answer()
+
+@dp.callback_query(F.data == "admin_books_all")
+async def admin_books_all(call: CallbackQuery, state: FSMContext):
+    await delete_last_user_message(state)
+    if call.from_user.id != ADMIN_ID:
+        await call.answer()
+        return
+    await state.clear()
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📚 Online Kitoblar", callback_data="admin_books_view_section_online")],
+        [InlineKeyboardButton(text="🎧 Audio kitoblar", callback_data="admin_books_view_section_audio")],
+        [InlineKeyboardButton(text="➕ Kitob qo'shish", callback_data="admin_books_add_book")],
+        [InlineKeyboardButton(text="➕ Yo'nalish qo'shish", callback_data="admin_books_add_direction")],
+        [InlineKeyboardButton(text="⬅️ Orqaga qaytish", callback_data="admin_books_menu")],
+    ])
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
+    await call.message.answer("📂 Barchasi: bo'limni tanlang", reply_markup=kb)
+    await call.answer()
+
+@dp.callback_query(F.data.startswith("admin_books_view_section_"))
+async def admin_books_view_section(call: CallbackQuery, state: FSMContext):
+    await delete_last_user_message(state)
+    if call.from_user.id != ADMIN_ID:
+        await call.answer()
+        return
+    section = call.data.replace("admin_books_view_section_", "")
+    if section not in {"online", "audio"}:
+        await call.answer()
+        return
+    kb = admin_books_categories_kb(section, "admin_books_view_cat", "admin_books_all")
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
+    await call.message.answer(f"{section_title(section)} yo'nalishlari:", reply_markup=kb)
+    await call.answer()
+
+@dp.callback_query(F.data.startswith("admin_books_view_cat_"))
+async def admin_books_view_category(call: CallbackQuery, state: FSMContext):
+    await delete_last_user_message(state)
+    if call.from_user.id != ADMIN_ID:
+        await call.answer()
+        return
+    parts = call.data.split("_")
+    if len(parts) < 6:
+        await call.answer()
+        return
+    section = parts[4]
+    try:
+        cat_idx = int(parts[5])
+    except ValueError:
+        await call.answer()
+        return
+    category = get_book_category_by_index(section, cat_idx)
+    if not category:
+        await call.answer()
+        return
+
+    books = list_books_in_category(section, category)
+    if books:
+        lines = [f"{b.get('number', '-')} - {book_short_title(b)}" for b in books]
+        text = f"{section_title(section)}\n{category}\n\n" + "\n".join(lines)
+    else:
+        text = f"{section_title(section)}\n{category}\n\n(hozircha bo'sh)"
+
+    rows = []
+    for b in books:
+        num = int(b.get("number", 0))
+        rows.append([InlineKeyboardButton(text=f"🗑️ {num} ni o'chirish", callback_data=f"admin_books_del_{section}_{num}_{cat_idx}")])
+    rows.append([InlineKeyboardButton(text="⬅️ Orqaga qaytish", callback_data=f"admin_books_view_section_{section}")])
+    rows.append([InlineKeyboardButton(text="🏠 Kitoblar menyusi", callback_data="admin_books_menu")])
+    kb = InlineKeyboardMarkup(inline_keyboard=rows)
+
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
+    await call.message.answer(text, reply_markup=kb)
+    await call.answer()
+
+@dp.callback_query(F.data.startswith("admin_books_del_"))
+async def admin_books_delete(call: CallbackQuery, state: FSMContext):
+    if call.from_user.id != ADMIN_ID:
+        await call.answer()
+        return
+    parts = call.data.split("_")
+    if len(parts) < 6:
+        await call.answer()
+        return
+    section = parts[3]
+    try:
+        number = int(parts[4])
+        cat_idx = int(parts[5])
+    except ValueError:
+        await call.answer()
+        return
+    ok = delete_book_by_number(section, number)
+    if ok:
+        await call.answer("Kitob o'chirildi.")
+    else:
+        await call.answer("Kitob topilmadi.", show_alert=True)
+    category = get_book_category_by_index(section, cat_idx)
+    if not category:
+        return
+    books = list_books_in_category(section, category)
+    if books:
+        lines = [f"{b.get('number', '-')} - {book_short_title(b)}" for b in books]
+        text = f"{section_title(section)}\n{category}\n\n" + "\n".join(lines)
+    else:
+        text = f"{section_title(section)}\n{category}\n\n(hozircha bo'sh)"
+    rows = []
+    for b in books:
+        num = int(b.get("number", 0))
+        rows.append([InlineKeyboardButton(text=f"🗑️ {num} ni o'chirish", callback_data=f"admin_books_del_{section}_{num}_{cat_idx}")])
+    rows.append([InlineKeyboardButton(text="⬅️ Orqaga qaytish", callback_data=f"admin_books_view_section_{section}")])
+    rows.append([InlineKeyboardButton(text="🏠 Kitoblar menyusi", callback_data="admin_books_menu")])
+    kb = InlineKeyboardMarkup(inline_keyboard=rows)
+    try:
+        await call.message.edit_text(text, reply_markup=kb)
+    except Exception:
+        await call.message.answer(text, reply_markup=kb)
+
+@dp.callback_query(F.data == "admin_books_add_direction")
+async def admin_books_add_direction_start(call: CallbackQuery, state: FSMContext):
+    await delete_last_user_message(state)
+    if call.from_user.id != ADMIN_ID:
+        await call.answer()
+        return
+    await state.clear()
+    await state.set_state(BookAdminState.add_direction)
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
+    await call.message.answer(
+        "➕ Yangi yo'nalish nomini yuboring:",
+        reply_markup=back_kb("admin_books_menu")
+    )
+    await call.answer()
+
+@dp.message(BookAdminState.add_direction)
+async def admin_books_add_direction_submit(msg: Message, state: FSMContext):
+    await record_last_user_message(msg, state)
+    if msg.from_user.id != ADMIN_ID:
+        return
+    direction_name = (msg.text or "").strip()
+    if not direction_name:
+        await msg.answer("Yo'nalish nomini yozing.", reply_markup=back_kb("admin_books_menu"))
+        return
+    add_book_direction(direction_name)
+    await state.clear()
+    await msg.answer(f"✅ Yo'nalish qo'shildi: {direction_name}", reply_markup=admin_books_menu_kb())
+
+@dp.callback_query(F.data == "admin_books_add_book")
+async def admin_books_add_book_start(call: CallbackQuery, state: FSMContext):
+    await delete_last_user_message(state)
+    if call.from_user.id != ADMIN_ID:
+        await call.answer()
+        return
+    await state.clear()
+    await state.update_data(book_add_section=None, book_add_category=None, book_pending=None, book_preview_ids=[])
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
+    await call.message.answer(
+        "Kitob qo'shish uchun bo'limni tanlang:",
+        reply_markup=admin_books_section_kb("admin_books_addbook_section", "admin_books_menu")
+    )
+    await call.answer()
+
+@dp.callback_query(F.data.startswith("admin_books_addbook_section_"))
+async def admin_books_add_book_section(call: CallbackQuery, state: FSMContext):
+    await delete_last_user_message(state)
+    if call.from_user.id != ADMIN_ID:
+        await call.answer()
+        return
+    section = call.data.replace("admin_books_addbook_section_", "")
+    if section not in {"online", "audio"}:
+        await call.answer()
+        return
+    await state.update_data(book_add_section=section)
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
+    await call.message.answer(
+        "Yo'nalishni tanlang:",
+        reply_markup=admin_books_categories_kb(section, "admin_books_addbook_cat", "admin_books_add_book")
+    )
+    await call.answer()
+
+@dp.callback_query(F.data.startswith("admin_books_addbook_cat_"))
+async def admin_books_add_book_category(call: CallbackQuery, state: FSMContext):
+    await delete_last_user_message(state)
+    if call.from_user.id != ADMIN_ID:
+        await call.answer()
+        return
+    parts = call.data.split("_")
+    if len(parts) < 6:
+        await call.answer()
+        return
+    section = parts[4]
+    try:
+        cat_idx = int(parts[5])
+    except ValueError:
+        await call.answer()
+        return
+    category = get_book_category_by_index(section, cat_idx)
+    if not category:
+        await call.answer()
+        return
+    await state.update_data(book_add_section=section, book_add_category=category)
+    await state.set_state(BookAdminState.add_book_cover)
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
+    await call.message.answer("📷 Kitob rasmini yuboring:", reply_markup=back_kb("admin_books_add_book"))
+    await call.answer()
+
+@dp.message(BookAdminState.add_book_cover, F.photo)
+async def admin_books_add_book_cover(msg: Message, state: FSMContext):
+    await record_last_user_message(msg, state)
+    if msg.from_user.id != ADMIN_ID:
+        return
+    await state.update_data(book_cover=build_payload_from_message(msg))
+    await state.set_state(BookAdminState.add_book_info)
+    await msg.answer("📝 Kitob uchun ma'lumot yozing:", reply_markup=back_kb("admin_books_add_book"))
+
+@dp.message(BookAdminState.add_book_cover)
+async def admin_books_add_book_cover_other(msg: Message, state: FSMContext):
+    await record_last_user_message(msg, state)
+    await msg.answer("Iltimos, kitob rasmini yuboring.", reply_markup=back_kb("admin_books_add_book"))
+
+@dp.message(BookAdminState.add_book_info)
+async def admin_books_add_book_info(msg: Message, state: FSMContext):
+    await record_last_user_message(msg, state)
+    if msg.from_user.id != ADMIN_ID:
+        return
+    info = (msg.text or "").strip()
+    if not info:
+        await msg.answer("Iltimos, kitob ma'lumotini yozing.", reply_markup=back_kb("admin_books_add_book"))
+        return
+    await state.update_data(book_info=info)
+    await state.set_state(BookAdminState.add_book_file)
+    await msg.answer("📄 Kitob faylini yuboring (hujjat yoki audio):", reply_markup=back_kb("admin_books_add_book"))
+
+@dp.message(BookAdminState.add_book_file)
+async def admin_books_add_book_file(msg: Message, state: FSMContext):
+    await record_last_user_message(msg, state)
+    if msg.from_user.id != ADMIN_ID:
+        return
+    payload = build_payload_from_message(msg)
+    if payload.get("type") not in {"document", "audio", "voice", "video"}:
+        await msg.answer("Iltimos, kitob faylini hujjat/audio/ovoz/video ko'rinishida yuboring.", reply_markup=back_kb("admin_books_add_book"))
+        return
+
+    data = await state.get_data()
+    section = data.get("book_add_section")
+    category = data.get("book_add_category")
+    cover = data.get("book_cover")
+    info = data.get("book_info")
+    if not section or not category or not info or not isinstance(cover, dict):
+        await msg.answer("Ma'lumotlar to'liq emas. Qaytadan boshlang.", reply_markup=admin_books_menu_kb())
+        await state.clear()
+        return
+
+    await state.update_data(book_file=payload)
+    preview_ids = []
+    try:
+        cover_msg = await bot.send_photo(msg.chat.id, cover.get("file_id"), caption=f"📚 Preview\n{section_title(section)} / {category}\n\n{info}")
+        preview_ids.append(cover_msg.message_id)
+    except Exception:
+        pass
+    try:
+        file_msg = await send_payload_to_chat(msg.chat.id, payload, with_caption=True)
+        if hasattr(file_msg, "message_id"):
+            preview_ids.append(file_msg.message_id)
+    except Exception:
+        pass
+
+    control_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="➕", callback_data="admin_books_add_confirm"),
+            InlineKeyboardButton(text="➖", callback_data="admin_books_add_cancel"),
+        ]
+    ])
+    ctrl_msg = await msg.answer("Kitobni saqlaysizmi?", reply_markup=control_kb)
+    preview_ids.append(ctrl_msg.message_id)
+    await state.update_data(book_preview_ids=preview_ids)
+    await state.set_state(BookAdminState.add_book_confirm)
+
+@dp.callback_query(F.data == "admin_books_add_confirm")
+async def admin_books_add_confirm(call: CallbackQuery, state: FSMContext):
+    if call.from_user.id != ADMIN_ID:
+        await call.answer()
+        return
+    data = await state.get_data()
+    section = data.get("book_add_section")
+    category = data.get("book_add_category")
+    cover = data.get("book_cover")
+    info = data.get("book_info")
+    file_payload = data.get("book_file")
+    if not section or not category or not info or not isinstance(cover, dict) or not isinstance(file_payload, dict):
+        await call.answer("Ma'lumotlar topilmadi.", show_alert=True)
+        return
+    number = add_book_item(section, category, cover, info, file_payload)
+    await state.clear()
+    await call.message.answer(f"✅ Kitob saqlandi. Raqami: {number}", reply_markup=admin_books_menu_kb())
+    await call.answer("Saqlandi")
+
+@dp.callback_query(F.data == "admin_books_add_cancel")
+async def admin_books_add_cancel(call: CallbackQuery, state: FSMContext):
+    if call.from_user.id != ADMIN_ID:
+        await call.answer()
+        return
+    data = await state.get_data()
+    for msg_id in data.get("book_preview_ids", []):
+        try:
+            await bot.delete_message(call.from_user.id, msg_id)
+        except Exception:
+            pass
+    await state.clear()
+    await call.message.answer("❌ Kitob qo'shish bekor qilindi.", reply_markup=admin_books_menu_kb())
+    await call.answer("Bekor qilindi")
 
 @dp.callback_query(F.data == "admin_numbers_menu")
 async def admin_numbers_menu(call: CallbackQuery, state: FSMContext):
