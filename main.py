@@ -2,6 +2,7 @@
 import json
 import asyncio
 import random
+import re
 from collections import deque
 from datetime import datetime
 from time import monotonic
@@ -595,6 +596,17 @@ def get_answer_value(msg: Message) -> str:
     if msg.video_note:
         return f"[video_note:{msg.video_note.file_id}]"
     return ""
+
+def extract_first_int(value: str) -> int | None:
+    if not value:
+        return None
+    m = re.search(r"\d+", value)
+    if not m:
+        return None
+    try:
+        return int(m.group(0))
+    except Exception:
+        return None
 
 async def send_payload_to_chat(chat_id: int, payload, with_caption: bool = True):
     if not isinstance(payload, dict):
@@ -1433,7 +1445,7 @@ async def slide_text(msg: Message, state: FSMContext):
         await msg.answer("Iltimos, javob yuboring.", reply_markup=back_kb("back_slide_colors"))
         return
     await state.update_data(text_amount=value)
-    await msg.answer("⏰ ? Qancha vaqtda tayyor bo'lsin? (minimal 2 soat)", reply_markup=back_kb("back_slide_text"))
+    await msg.answer("⏰ Qancha vaqtda tayyor bo'lsin? (minimal 5 soat)", reply_markup=back_kb("back_slide_text"))
     await state.set_state(SlideState.deadline)
 
 @dp.message(SlideState.deadline)
@@ -1442,6 +1454,10 @@ async def slide_deadline(msg: Message, state: FSMContext):
     value = get_answer_value(msg)
     if not value:
         await msg.answer("Iltimos, javob yuboring.", reply_markup=back_kb("back_slide_text"))
+        return
+    hours = extract_first_int(value)
+    if hours is not None and hours < 5:
+        await msg.answer("⛔ Minimal muddat 5 soat. Qayta kiriting:", reply_markup=back_kb("back_slide_text"))
         return
     await state.update_data(deadline=value)
     await msg.answer("📂  Qaysi formatda bo'lsin? (pdf / ppt / word / boshqasi)", reply_markup=back_kb("back_slide_deadline"))
@@ -1567,7 +1583,7 @@ async def back_slide_handlers(call: CallbackQuery, state: FSMContext):
             await call.message.delete()
         except Exception:
             pass
-        await call.message.answer("⏰ ? Qancha vaqtda tayyor bo'lsin? (minimal 2 soat)", reply_markup=back_kb("back_slide_text"))
+        await call.message.answer("⏰ Qancha vaqtda tayyor bo'lsin? (minimal 5 soat)", reply_markup=back_kb("back_slide_text"))
     
     elif data == "back_slide_format":
         await state.set_state(SlideState.format)
@@ -1651,7 +1667,7 @@ async def ai_video(msg: Message, state: FSMContext):
     await answer_with_image(
         msg,
         UI_IMAGE_MAP["ai_video"],
-        "🎬 AI video xizmati.\n📌 Max 10 soniya.\n\n👇 Xizmat turini tanlang:",
+        "🎬 AI video xizmati.\n📌 Max 10 soniya.\n⏰ Minimal muddat: 5 soat.\n\n👇 Xizmat turini tanlang:",
         reply_markup=kb,
     )
 
@@ -1730,6 +1746,7 @@ async def ai_img_to_video_prompt(msg: Message, state: FSMContext):
     await msg.answer(
         "Tushundim, endi ishni boshlashim uchun to'lov qilishingiz kerak bo'ladi.\n\n"
         f"💰 To'lov miqdori: {price} so'm\n"
+        "⏰ Minimal muddat: 5 soat\n"
         f"💳 Karta raqam: {CARD_NUMBER}\n"
         "🧾 Shu karta raqamga to'lov qilib chekini yuboring.\n"
         "❌ Eslatib o'tamiz, cheksiz to'lov qabul qilinmaydi!",
@@ -1764,6 +1781,7 @@ async def ai_image_gen_format(msg: Message, state: FSMContext):
     await msg.answer(
         "Tushundim, endi ishni boshlashim uchun to'lov qilishingiz kerak bo'ladi.\n\n"
         f"💰 To'lov miqdori: {price} so'm\n"
+        "⏰ Minimal muddat: 5 soat\n"
         f"💳 Karta raqam: {CARD_NUMBER}\n"
         "🧾 Shu karta raqamga to'lov qilib chekini yuboring.\n"
         "❌ Eslatib o'tamiz, cheksiz to'lov qabul qilinmaydi!",
@@ -1784,6 +1802,7 @@ async def ai_custom_prompt(msg: Message, state: FSMContext):
     await msg.answer(
         "Tushundim, endi ishni boshlashim uchun to'lov qilishingiz kerak bo'ladi.\n\n"
         f"💰 To'lov miqdori: {price} so'm\n"
+        "⏰ Minimal muddat: 5 soat\n"
         f"💳 Karta raqam: {CARD_NUMBER}\n"
         "🧾 Shu karta raqamga to'lov qilib chekini yuboring.\n"
         "❌ Eslatib o'tamiz, cheksiz to'lov qabul qilinmaydi!",
@@ -1836,6 +1855,7 @@ async def ai_payment_any(msg: Message, state: FSMContext, photo_id=None, doc_id=
             "? Tur: Rasmni video qilish"
             f" Matn: {data.get('prompt')}"
             f" {data.get('price')} so'm"
+            " ⏰ Muddat: kamida 5 soat"
         )
     elif kind == "image_gen":
         text = (
@@ -1845,6 +1865,7 @@ async def ai_payment_any(msg: Message, state: FSMContext, photo_id=None, doc_id=
             f" Tavsif: {data.get('prompt')}"
             f" Format: {data.get('format')}"
             f" {data.get('price')} so'm"
+            " ⏰ Muddat: kamida 5 soat"
         )
     else:
         text = (
@@ -1853,6 +1874,7 @@ async def ai_payment_any(msg: Message, state: FSMContext, photo_id=None, doc_id=
             " Tur: Men hohlagan video"
             f" Matn: {data.get('prompt')}"
             f" {data.get('price')} so'm"
+            " ⏰ Muddat: kamida 5 soat"
         )
 
     if photo_id:
