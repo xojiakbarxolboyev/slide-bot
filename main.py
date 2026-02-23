@@ -31,6 +31,7 @@ ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 INFO_ADMIN_ID = 7420305714  # @xolboyevv77 - ro'yxatdan o'tganlar
 CARD_NUMBER = os.getenv("CARD_NUMBER", "9860080347733265")
 CHANNEL = "@bilimulash_kanal"
+GALLERY_CHANNEL_URL = "https://t.me/bilimulash_galereya"
 DATA_DIR = Path(os.getenv("DATA_DIR", str(BASE_DIR))).resolve()
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 USERS_FILE = DATA_DIR / "users.json"
@@ -59,6 +60,7 @@ UI_IMAGE_MAP = {
     "bot_create": BASE_DIR / "5.png",
     "nakrutka": BASE_DIR / "6.png",
     "books_home": BASE_DIR / "7.png",
+    "gallery": BASE_DIR / "8.png",
 }
 
 async def record_last_user_message(msg: Message, state: FSMContext):
@@ -768,7 +770,7 @@ def menu_kb(is_admin: bool = False):
         [KeyboardButton(text="🧑‍💼 Admin bilan bog'lanish")],
         [KeyboardButton(text="📝 Slayd buyurtma"), KeyboardButton(text="🎥 AI Video")],
         [KeyboardButton(text="🎬 Kino kodlari"), KeyboardButton(text="📚 Foydali kodlar")],
-        [KeyboardButton(text="📖 Kitoblar"), KeyboardButton(text="📈 Nakrutka")],
+        [KeyboardButton(text="📖 Kitoblar"), KeyboardButton(text="🖼️ Galereya"), KeyboardButton(text="📈 Nakrutka")],
         [KeyboardButton(text="🤖 Bot yaratib berish")],
     ]
     if is_admin:
@@ -784,6 +786,25 @@ def sub_kb():
 def back_kb(callback_data: str):
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="⬅️ Orqaga qaytish", callback_data=callback_data)],
+    ])
+
+def gallery_link_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🖼️ Galereya kanali", url=GALLERY_CHANNEL_URL)],
+    ])
+
+def back_with_gallery_kb(callback_data: str):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅️ Orqaga qaytish", callback_data=callback_data)],
+        [InlineKeyboardButton(text="🖼️ Galereya kanali", url=GALLERY_CHANNEL_URL)],
+    ])
+
+def ai_menu_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🖼️ Rasmni video qilish", callback_data="ai_img_to_video")],
+        [InlineKeyboardButton(text="🎨 Rasm yaratish", callback_data="ai_image_gen")],
+        [InlineKeyboardButton(text="🎬 Men hohlagan video", callback_data="ai_custom_video")],
+        [InlineKeyboardButton(text="🖼️ Galereya kanali", url=GALLERY_CHANNEL_URL)],
     ])
 
 def admin_panel_kb():
@@ -1398,8 +1419,9 @@ async def slide_start(msg: Message, state: FSMContext):
     await answer_with_image(
         msg,
         UI_IMAGE_MAP["slide_topic"],
-        "📌  Slayd mavzusini yozing:",
-        reply_markup=back_kb("back_to_menu"),
+        "📌  Slayd mavzusini yozing:\n\n"
+        "🖼️ @bilimulash_bot tomonidan yaratilgan mahsulotlarni galereya kanalida ko'rishingiz mumkin.",
+        reply_markup=back_with_gallery_kb("back_to_menu"),
     )
     await state.set_state(SlideState.topic)
 
@@ -1548,8 +1570,9 @@ async def back_slide_handlers(call: CallbackQuery, state: FSMContext):
         await answer_with_image(
             call.message,
             UI_IMAGE_MAP["slide_topic"],
-            "📌  Slayd mavzusini yozing:",
-            reply_markup=back_kb("back_to_menu"),
+            "📌  Slayd mavzusini yozing:\n\n"
+            "🖼️ @bilimulash_bot tomonidan yaratilgan mahsulotlarni galereya kanalida ko'rishingiz mumkin.",
+            reply_markup=back_with_gallery_kb("back_to_menu"),
         )
     
     elif data == "back_slide_pages":
@@ -1634,6 +1657,16 @@ async def nakrutka_contact(msg: Message, state: FSMContext):
         reply_markup=kb,
     )
 
+@priority_router.message(F.text.contains("Galereya"))
+async def gallery_channel(msg: Message, state: FSMContext):
+    await delete_last_user_message(state)
+    await answer_with_image(
+        msg,
+        UI_IMAGE_MAP["gallery"],
+        "🖼️ @bilimulash_bot tomonidan yaratilgan mahsulotlarni shu kanalda tomosha qilishingiz mumkin.",
+        reply_markup=gallery_link_kb(),
+    )
+
 # ===================== BOT YARATISH =====================
 @priority_router.message(F.text.contains("Bot yaratib berish"))
 async def bot_create_contact(msg: Message, state: FSMContext):
@@ -1658,16 +1691,14 @@ async def ai_video(msg: Message, state: FSMContext):
     if not is_registered(msg.from_user.id):
         await msg.answer("🔒 Avval ro'yxatdan o'ting. /start bosing.", reply_markup=sub_kb())
         return
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🖼️ Rasmni video qilish", callback_data="ai_img_to_video")],
-        [InlineKeyboardButton(text="🎨 Rasm yaratish", callback_data="ai_image_gen")],
-        [InlineKeyboardButton(text="🎬 Men hohlagan video", callback_data="ai_custom_video")],
-    ])
+    kb = ai_menu_kb()
     await state.set_state(VideoState.menu)
     await answer_with_image(
         msg,
         UI_IMAGE_MAP["ai_video"],
-        "🎬 AI video xizmati.\n📌 Max 10 soniya.\n⏰ Minimal muddat: 5 soat.\n\n👇 Xizmat turini tanlang:",
+        "🎬 AI video xizmati.\n📌 Max 10 soniya.\n⏰ Minimal muddat: 5 soat.\n\n"
+        "🖼️ @bilimulash_bot tomonidan yaratilgan mahsulotlarni galereya kanalida ko'rishingiz mumkin.\n\n"
+        "👇 Xizmat turini tanlang:",
         reply_markup=kb,
     )
 
@@ -1897,16 +1928,17 @@ async def ai_payment_any(msg: Message, state: FSMContext, photo_id=None, doc_id=
 async def back_ai_menu(call: CallbackQuery, state: FSMContext):
     await delete_last_user_message(state)
     await state.set_state(VideoState.menu)
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="? Rasmni video qilish", callback_data="ai_img_to_video")],
-        [InlineKeyboardButton(text=" Rasm yaratish", callback_data="ai_image_gen")],
-        [InlineKeyboardButton(text=" Men hohlagan video", callback_data="ai_custom_video")],
-    ])
+    kb = ai_menu_kb()
     try:
         await call.message.delete()
     except Exception:
         pass
-    await call.message.answer(" Xizmat turini tanlang:", reply_markup=kb)
+    await call.message.answer(
+        "🎬 AI video xizmati.\n"
+        "🖼️ @bilimulash_bot tomonidan yaratilgan mahsulotlarni galereya kanalida ko'rishingiz mumkin.\n\n"
+        "👇 Xizmat turini tanlang:",
+        reply_markup=kb,
+    )
     await call.answer()
 
 @dp.callback_query(F.data == "back_ai_image")
