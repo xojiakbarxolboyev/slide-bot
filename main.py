@@ -1192,13 +1192,10 @@ async def kino_send(msg: Message, state: FSMContext):
             await send_payload(msg, item)
     else:
         await send_payload(msg, content)
-    await answer_with_image(
-        msg,
-        UI_IMAGE_MAP["main_menu"],
-        "Xizmatni tanlang 👇",
-        reply_markup=menu_kb(msg.from_user.id == ADMIN_ID),
+    await msg.answer(
+        "🎬 Yana kino kodini yuborishingiz mumkin.",
+        reply_markup=back_kb("back_kino_menu"),
     )
-    await state.clear()
 
 @dp.callback_query(F.data == "back_kino_menu")
 async def back_kino_menu(call: CallbackQuery, state: FSMContext):
